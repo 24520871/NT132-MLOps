@@ -1,5 +1,60 @@
+# Python / environments
 .venv/
+venv/
 __pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# MLflow local stores and model artifacts
 mlflow.db
+mlflow.db-*
 mlruns/
+mlartifacts/
+
+# Data (tracked with DVC, never committed to git)
 data/
+
+# DVC local state (the small .dvc pointer files ARE committed)
+.dvc/cache/
+.dvc/tmp/
+.dvc/config.local
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+secrets/
+credentials
+credentials.json
+service-account*.json
+.aws/
+.kaggle/
+kaggle.json
+
+# Terraform state and variable files (can contain secrets)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+
+# Airflow / local service state
+airflow/logs/
+airflow/airflow.db
+airflow/airflow.cfg
+airflow/webserver_config.py
+.docker/
+
+# Editor / OS / tool-local settings
+.claude/settings.local.json
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
