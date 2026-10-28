@@ -1,0 +1,3 @@
+# Data is tracked with `dvc add` (see data/raw/*.csv.dvc). Pipeline stages are not used yet;
+# training is run by `python -m usecases.churn.train` (later by Airflow).
+stages: {}

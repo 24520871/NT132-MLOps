@@ -1,0 +1,29 @@
+name: churn
+model_name: churn            # MLflow registered model name
+experiment: churn
+
+data:
+  path: data/raw/WA_Fn-UseC_-Telco-Customer-Churn.csv   # relative to project root
+  source: https://www.kaggle.com/datasets/blastchar/telco-customer-churn
+
+split:
+  test_size: 0.2
+  seed: 42
+
+threshold: 0.5               # probability cutoff for the churn label
+
+models:
+  logreg:
+    C: 1.0
+    max_iter: 1000
+  xgboost:
+    n_estimators: 300
+    max_depth: 4
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+
+gate:
+  min_auc: 0.80
+  min_recall: 0.60
+  max_auc_drop_vs_production: 0.0   # candidate AUC must be >= production AUC - this

@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlops-platform"
+version = "0.1.0"
+description = "NT132 Group 4 MLOps platform (MVP: Telco churn)"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+package-dir = { "mlops" = "src/mlops", "usecases" = "usecases" }
+packages = [
+    "mlops",
+    "mlops.data",
+    "mlops.training",
+    "mlops.registry",
+    "mlops.serving",
+    "mlops.monitoring",
+    "usecases",
+    "usecases.churn",
+    "usecases.fraud",
+    "usecases.recsys",
+    "usecases.forecast",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "src"]
+filterwarnings = ["ignore::UserWarning", "ignore::DeprecationWarning", "ignore::FutureWarning"]
+
+[tool.ruff]
+line-length = 100
