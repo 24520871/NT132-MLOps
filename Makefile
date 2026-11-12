@@ -1,4 +1,4 @@
-# Convenience targets (need GNU make; on plain Windows copy the commands from README.md)
+# Convenience targets (need GNU make; on plain Windows copy the commands from docs/DEVELOPMENT.md)
 PY = .venv/Scripts/python
 .PHONY: setup bootstrap train promote serve mlflow-ui test
 
