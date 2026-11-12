@@ -7,6 +7,20 @@ gate + promote the best one through registry aliases, and serve it with FastAPI.
 ## Requirements
 Python 3.11+ (developed on 3.14, Windows 11). Commands below are for PowerShell from the project root.
 
+## Quick start (new teammate)
+```powershell
+git clone https://github.com/24520871/NT132-MLOps.git
+cd NT132-MLOps
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m pip install -e .
+.venv\Scripts\python -m pytest tests -q        # all tests should pass
+make bootstrap                                  # train + promote -> a `production` model (or run steps 1-2 below)
+.venv\Scripts\python -m uvicorn mlops.serving.app:app --port 8000   # Swagger at /docs
+```
+`mlflow.db` and `mlruns/` are local and git-ignored: every teammate trains their own copy.
+Do not commit `.env`, credentials, `.pem`/`.key` files or Terraform state.
+
 ## Setup
 ```powershell
 python -m venv .venv
@@ -16,9 +30,11 @@ python -m venv .venv
 
 ## Dataset
 IBM Telco Customer Churn (Kaggle `blastchar/telco-customer-churn`, 7,043 rows, 26.5 % churn).
-Place `WA_Fn-UseC_-Telco-Customer-Churn.csv` in `data/raw/`. If the file is missing, training stops with
-a clear error — it never falls back to synthetic data. The file is tracked with DVC (`data/raw/*.csv.dvc`,
-local cache only; no git repo or remote yet).
+The CSV is public and small (~1 MB), so it is committed at `data/raw/WA_Fn-UseC_-Telco-Customer-Churn.csv`
+and works right after `git clone`. If the file is missing, training stops with a clear error — it never falls
+back to synthetic data. `data/raw/*.csv.dvc` records its DVC hash; there is no DVC remote yet (S3 comes in
+Stage F, after which larger datasets go through DVC instead of git). Only the Telco CSV is un-ignored;
+anything else under `data/` stays out of git.
 
 ## Run the workflow
 ```powershell

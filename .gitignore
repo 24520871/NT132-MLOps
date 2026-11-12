@@ -15,8 +15,22 @@ mlflow.db-*
 mlruns/
 mlartifacts/
 
-# Data (tracked with DVC, never committed to git)
-data/
+# Data: anchored to the repo root (an unanchored `data/` also hid src/mlops/data/).
+# Only the small PUBLIC Telco CSV (+ its .dvc pointer and README) is committed so teammates can run immediately.
+# Any other dataset stays out of git (use DVC + S3 remote).
+/data/*
+!/data/raw/
+/data/raw/*
+!/data/raw/WA_Fn-UseC_-Telco-Customer-Churn.csv
+!/data/raw/WA_Fn-UseC_-Telco-Customer-Churn.csv.dvc
+!/data/raw/README.txt
+
+# Local test/notebook/model leftovers
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+*.pkl
+*.joblib
 
 # DVC local state (the small .dvc pointer files ARE committed)
 .dvc/cache/

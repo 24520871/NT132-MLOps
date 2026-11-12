@@ -14,7 +14,11 @@ Roadmap: **A–D local MVP -> E–F containerized MVP deployed on AWS -> G–I A
 - Models: logistic regression baseline + XGBoost, as sklearn Pipelines (preprocessing inside the saved model).
 - Metrics: ROC-AUC, precision, recall, F1 (+ confusion matrix artifact). Prioritize recall/AUC.
 - Gate defaults (`usecases/churn/config.yaml`): `min_auc: 0.80`, `min_recall: 0.60`, and the candidate must not be worse than the current production model on AUC. (User to confirm.)
-- MLflow: local SQLite `sqlite:///mlflow.db`; registry aliases `candidate` / `production` (+ `previous_production` for rollback). No MLflow stages.
+- MLflow: local SQLite `sqlite:///mlflow.db`; registry aliases `candidate` -> `staging` -> `production` (+ `previous_production` for rollback). No MLflow stages.
+- Promotion lifecycle (decided 2026-11-12, implemented in Stages G and I, NOT in the M1 code): `candidate` --Gate 1 (offline metrics, current gate)--> `staging` --Gate 2 (automatic staging check)--> `production`. No human approval step. M1 code still goes candidate -> production directly until Stage G.
+- Gate 2 (automatic): load model from `staging`, check schema/signature, predict on a held-out sample (no errors/NaN, positive-rate in a sane range), shadow-compare with production on the same sample, measure latency.
+- Automatic rollback (Stage I): after each promote, watch for a window (default 24 h, or N replay slices). Roll back if any of: API error rate or p95 latency > 2x baseline (Prometheus); recall (or AUC) drops > 0.05 vs. the value at gate time (delayed ground truth via replay); severe prediction drift (Evidently). Action: `production` := `previous_production`, tag the bad version `rolled_back=true` + reason (and block auto re-promotion), alert (email/Slack), API reload. Safeguards: max one rollback per version, cooldown between rollbacks, no `previous_production` -> alert only. Manual rollback stays available: `python -m mlops.registry.rollback churn`.
+- API reload: router polls the `production` alias version every 30-60 s and reloads on change, plus an internal `POST /admin/reload` called right after promote/rollback.
 - UI: none extra. FastAPI Swagger `/docs` + MLflow UI.
 - Packaging: `pyproject.toml` with `pip install -e .` so `mlops` and `usecases` import cleanly; pytest config there too.
 - Python: local 3.14 for MVP; Docker later may use 3.11 (check version-specific pins then).
@@ -110,6 +114,8 @@ Done when: a prediction request from the laptop to the EC2 API returns a probabi
 Goal: training runs as an Airflow DAG instead of a manual command.
 - [ ] `docker/airflow/Dockerfile`, Airflow in compose (pick version, LocalExecutor, Postgres metadata DB). Likely needs t3.xlarge on EC2 — confirm RAM before deploying.
 - [ ] `airflow/dags/ingest_dag.py` (validate data) and `training_dag.py`: ingest/validate -> train -> evaluate -> quality gate -> promote/reject. Run the training step in the separate trainer container (DockerOperator/BashOperator), not Airflow's own Python env, to avoid dependency clashes.
+- [ ] Staging lifecycle: change `registry/promote.py` to `candidate -> staging` (Gate 1) and add `training/staging_check.py` (Gate 2) with `staging -> production`; `training_dag` runs ingest -> train -> Gate 1 -> staging -> Gate 2 -> production/reject. Add Gate 2 thresholds to `config.yaml`; update unit tests for the new alias flow (the M1 candidate -> production path is replaced).
+- [ ] API auto-reload: router polls the `production` alias, plus `POST /admin/reload`; integration test for reload after alias change.
 - [ ] `tests/integration/test_dags.py` (DAGs import cleanly); trigger a run, verify the MLflow run and registry change.
 - [ ] Redeploy to EC2 and re-verify.
 
@@ -117,11 +123,14 @@ Goal: training runs as an Airflow DAG instead of a manual command.
 - [ ] API metrics (`serving/metrics.py`): request rate, latency, errors; prediction logging (`prediction_log.py`).
 - [ ] Prometheus (+ node-exporter, cAdvisor) and Grafana with provisioned dashboards and an alert rule (`infra/prometheus`, `infra/grafana`).
 - [ ] Evidently data/prediction drift report (`monitoring/drift.py`), run by `monitoring_dag.py`; drift score exposed as a metric; HTML report saved to S3.
+- [ ] Expose the signals auto-rollback needs (error rate, p95 latency, positive-prediction rate, drift score) as Prometheus metrics. Optional overview Grafana dashboard: API health, drift score, running model version, last gate result.
 - [ ] Verify with normal vs. artificially shifted data.
 
 ## Stage I — Automated retraining + rollback
 - [ ] `monitoring/trigger_retrain.py`: drift/performance decay above threshold -> trigger `training_dag` -> gate vs. production -> promote or reject.
-- [ ] `registry/rollback.py`: repoint `production` to `previous_production`; the API picks it up via reload.
+- [ ] `registry/rollback.py`: repoint `production` to `previous_production`, tag the bad version `rolled_back=true` + reason, block its auto re-promotion, call `/admin/reload`. Manual CLI plus callable from the DAG.
+- [ ] Automatic rollback: post-promote watch window (default 24 h / N replay slices) in `monitoring_dag`; triggers = error rate or p95 latency > 2x baseline, recall drop > 0.05 vs. gate-time value, severe prediction drift. Safeguards: one rollback per version, cooldown, no `previous_production` -> alert only. Alert via email/Slack. Thresholds in `config.yaml`.
+- [ ] Tests: rollback restores the previous version; blocked re-promotion; no-previous case; cooldown.
 - [ ] Simulate delayed ground truth by replaying held-out data in time slices; demo script: drift injected -> retrain -> promote -> serve, plus a rollback.
 
 ## Stage J — CI/CD (needs `git init` + a GitHub repo)
@@ -144,7 +153,8 @@ Goal: training runs as an Airflow DAG instead of a manual command.
 
 ## Open items needing the user
 - [x] Telco CSV placed in `data/raw/`
-- [ ] Confirm gate thresholds (default AUC >= 0.80, recall >= 0.60)
+- [ ] Confirm gate thresholds (default AUC >= 0.80, recall >= 0.60); Gate 2 and rollback thresholds are proposals (recall drop 0.05, latency 2x, 24 h window)
+- [x] Decided 2026-11-12: add `staging` alias + Gate 2, automatic rollback, automatic checks only (plan/diagram updated; code in Stages G and I)
 - [ ] `git init` — user said NOT YET (DVC runs with `--no-scm`)
 - [x] Old synthetic `mlflow.db` deleted
 

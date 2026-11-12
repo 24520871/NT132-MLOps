@@ -23,7 +23,7 @@ Python, scikit-learn/XGBoost, MLflow, DVC, Airflow, FastAPI, Docker, GitHub Acti
 
 ## Decisions
 - One platform, many use cases: each in `usecases/<name>/` with the same interface (load data, features, train, evaluate); later DAGs/API are parameterized by use-case name.
-- MLflow **aliases** (`candidate`, `staging`, `production`), not deprecated stages. Rollback = repoint `production` alias.
+- MLflow **aliases** (`candidate`, `staging`, `production`, + `previous_production`), not deprecated stages. Rollback = repoint `production` alias. Decided 2026-11-12: candidate -> (Gate 1) -> staging -> (Gate 2, automatic) -> production, with automatic rollback after promote. Only a plan so far: implemented in Stages G and I; M1 code still goes candidate -> production directly. Details in `docs/BUILD_PLAN.md`.
 - MVP MLflow store: local SQLite (`sqlite:///mlflow.db`); Postgres + S3 later.
 - Deploy target: `docker compose` on a single EC2 (>= t3.large), S3 for DVC/artifacts, ECR for images.
 - Metrics: Precision, Recall, F1, AUC (prioritize recall/AUC for churn).
