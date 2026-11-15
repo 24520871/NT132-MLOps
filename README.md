@@ -228,7 +228,7 @@ Các kết quả định lượng, hình ảnh minh chứng và số liệu ki�
 
 ## 🛠️ Hướng dẫn chạy và phát triển (MVP local)
 
-Cách cài đặt, chạy train → promote → serve, chạy test và xử lý sự cố nằm trong [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Kế hoạch từng stage: [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md). Tổng quan để chia task: [docs/TEAM_OVERVIEW.md](docs/TEAM_OVERVIEW.md).
+Cách cài đặt, chạy train → promote → serve, chạy test và xử lý sự cố nằm trong [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Kế hoạch từng stage: [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md). Phân công hiện tại: [docs/TASKS_DASHBOARD.md](docs/TASKS_DASHBOARD.md).
 
 ## 👥 8. Thành viên thực hiện
 

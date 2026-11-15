@@ -45,6 +45,7 @@ Python, scikit-learn/XGBoost, MLflow, DVC, Airflow, FastAPI, Docker, GitHub Acti
 - [x] Scaffold: stub files for all stages, requirements, .gitignore, venv
 - [x] A data, B train/MLflow, C gate/promote, D FastAPI + README — **M1 local MVP done 2026-10-28, 43 tests pass** (details: `docs/BUILD_PLAN.md` progress log)
 - State: real Telco CSV in `data/raw/` (DVC-tracked, no git); `mlflow.db` has `churn` v1 = `production`; run `pip install -e .` in `.venv` first
-- [ ] E Docker Compose, F AWS deploy (M2)
+- Direction 2026-11-15: team goal is a working dashboard first. Order **E -> H**; F (AWS) and G (Airflow) deferred; staging/rollback stay in G/I. Split in `docs/TASKS_DASHBOARD.md`. Three people work in parallel on branches; only the stage owner edits shared files.
+- [ ] E Docker Compose, F AWS deploy (M2, deferred)
 - [ ] G Airflow, H monitoring, I retrain+rollback (M3)
 - [ ] J CI/CD, K other use cases, L report (M4)

@@ -122,7 +122,8 @@ Goal: training runs as an Airflow DAG instead of a manual command.
 ## Stage H — Monitoring
 - [ ] API metrics (`serving/metrics.py`): request rate, latency, errors; prediction logging (`prediction_log.py`).
 - [ ] Prometheus (+ node-exporter, cAdvisor) and Grafana with provisioned dashboards and an alert rule (`infra/prometheus`, `infra/grafana`).
-- [ ] Evidently data/prediction drift report (`monitoring/drift.py`), run by `monitoring_dag.py`; drift score exposed as a metric; HTML report saved to S3.
+- [ ] Evidently data/prediction drift report (`monitoring/drift.py`); drift score exposed as a metric. **Interim (decided 2026-11-15):** run by a script / `make drift` (Airflow does not exist yet), HTML report saved locally under `reports/` (git-ignored). Later (after G): wrap in `monitoring_dag.py`, save to S3.
+- [ ] Replay script (`scripts/replay_drift.py`): send normal vs. artificially shifted Telco rows to the API / drift check; label all resulting numbers as simulated.
 - [ ] Expose the signals auto-rollback needs (error rate, p95 latency, positive-prediction rate, drift score) as Prometheus metrics. Optional overview Grafana dashboard: API health, drift score, running model version, last gate result.
 - [ ] Verify with normal vs. artificially shifted data.
 
@@ -154,6 +155,7 @@ Goal: training runs as an Airflow DAG instead of a manual command.
 ## Open items needing the user
 - [x] Telco CSV placed in `data/raw/`
 - [ ] Confirm gate thresholds (default AUC >= 0.80, recall >= 0.60); Gate 2 and rollback thresholds are proposals (recall drop 0.05, latency 2x, 24 h window)
+- [x] Decided 2026-11-15 (dashboard-first, no AWS yet): **order E -> H**, with **F deferred** (not dropped) and **G deferred** until after the dashboard works. Staging/Gate 2/rollback stay in G and I (not pulled forward). Drift runs as a script until Airflow exists. Task split for 3 people: `docs/TASKS_DASHBOARD.md`. Stage H tasks may start in parallel with E on code that needs no Docker (metrics, drift, replay); running Prometheus/Grafana needs E first.
 - [x] Decided 2026-11-12: add `staging` alias + Gate 2, automatic rollback, automatic checks only (plan/diagram updated; code in Stages G and I)
 - [ ] `git init` — user said NOT YET (DVC runs with `--no-scm`)
 - [x] Old synthetic `mlflow.db` deleted

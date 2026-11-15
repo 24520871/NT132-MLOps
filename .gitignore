@@ -75,3 +75,6 @@ airflow/webserver_config.py
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Generated drift/monitoring reports
+reports/
