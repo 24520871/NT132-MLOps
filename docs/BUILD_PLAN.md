@@ -85,11 +85,11 @@ Done when: with a promoted model, `/docs` Swagger returns a probability for a sa
 Goal: the MVP runs identically in containers on the laptop. Prereq: Docker Desktop installed (check `docker --version` first and report).
 
 Tasks
-- [ ] `docker/serving/Dockerfile` (FastAPI, Python 3.11-slim, non-root user) and `docker/mlflow/Dockerfile` (MLflow server).
-- [ ] `docker-compose.yml`: `postgres` (MLflow backend store, healthcheck), `mlflow` (backend = Postgres, artifacts = shared volume for now), `api` (serving), one-off `trainer` service (`docker compose run --rm trainer`). Config via `.env` (`.env.example` committed, `.env` ignored; no hardcoded credentials).
-- [ ] Switch MLflow URI from SQLite to the containerized server via env var; retrain (old SQLite runs are not migrated).
-- [ ] Pin dependency versions (known-good set from the working local MVP) and verify they install on Python 3.11.
-- [ ] Verify: `docker compose config` valid -> `up -d` -> healthchecks green -> train in container -> promote -> `curl /predict/churn` works -> `docker compose down`.
+- [x] `docker/serving/Dockerfile` (FastAPI, Python 3.12-slim, non-root user) and `docker/mlflow/Dockerfile` (MLflow server).
+- [x] `docker-compose.yml`: `postgres` (MLflow backend store, healthcheck), `mlflow` (backend = Postgres, artifacts = shared volume for now), `api` (serving), one-off `trainer` service (`docker compose run --rm trainer`). Config via `.env` (`.env.example` committed, `.env` ignored; no hardcoded credentials).
+- [x] Switch MLflow URI from SQLite to the containerized server via env var; retrain (old SQLite runs are not migrated).
+- [x] Pin dependency versions (known-good set from the working local MVP) and verify they install on Python 3.12 (xgboost 3.4 needs >=3.12, so the images use 3.12, not 3.11).
+- [x] Verify: `docker compose config` valid -> `up -d` -> healthchecks green -> train in container -> promote -> `curl /predict/churn` works -> `docker compose down`.
 Done when: the full train -> promote -> predict flow works with only Docker commands.
 
 ## Stage F — Deploy the MVP on AWS  (milestone M2: "MVP running in the cloud")
