@@ -1,0 +1,24 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  # MLflow's own Postgres, read only to show the latest quality-gate result (model_version_tags).
+  # Values come from the container environment (docker-compose.monitoring.yml), not from this file.
+  - name: MLflow
+    uid: mlflow-pg
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: postgres:5432
+    user: ${POSTGRES_USER}
+    jsonData:
+      database: ${POSTGRES_DB}
+      sslmode: disable
+      postgresVersion: 1600
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD}

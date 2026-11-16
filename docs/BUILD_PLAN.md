@@ -120,8 +120,8 @@ Goal: training runs as an Airflow DAG instead of a manual command.
 - [ ] Redeploy to EC2 and re-verify.
 
 ## Stage H — Monitoring
-- [ ] API metrics (`serving/metrics.py`): request rate, latency, errors; prediction logging (`prediction_log.py`).
-- [ ] Prometheus (+ node-exporter, cAdvisor) and Grafana with provisioned dashboards and an alert rule (`infra/prometheus`, `infra/grafana`).
+- [x] API metrics (`serving/metrics.py`): request rate, latency, errors; prediction logging (`prediction_log.py`).
+- [x] Prometheus (+ node-exporter, cAdvisor) and Grafana with provisioned dashboards and an alert rule (`infra/prometheus`, `infra/grafana`). Done 2026-11-16 (`docker-compose.monitoring.yml` overlay; cAdvisor skipped, node-exporter also carries the drift textfile; no Alertmanager yet).
 - [ ] Evidently data/prediction drift report (`monitoring/drift.py`); drift score exposed as a metric. **Interim (decided 2026-11-15):** run by a script / `make drift` (Airflow does not exist yet), HTML report saved locally under `reports/` (git-ignored). Later (after G): wrap in `monitoring_dag.py`, save to S3.
 - [ ] Replay script (`scripts/replay_drift.py`): send normal vs. artificially shifted Telco rows to the API / drift check; label all resulting numbers as simulated.
 - [ ] Expose the signals auto-rollback needs (error rate, p95 latency, positive-prediction rate, drift score) as Prometheus metrics. Optional overview Grafana dashboard: API health, drift score, running model version, last gate result.

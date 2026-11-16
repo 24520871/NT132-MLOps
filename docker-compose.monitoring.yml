@@ -1,0 +1,57 @@
+# Monitoring overlay (Stage H): Prometheus + Grafana + node-exporter on top of the Stage E stack.
+#   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d --build
+# Needs in .env (see .env.example): GRAFANA_ADMIN_PASSWORD (+ the POSTGRES_* values already there).
+# Prometheus/Grafana are published on 127.0.0.1 only. Grafana: http://localhost:3000  Prometheus: http://localhost:9090
+services:
+  # The base `api` service gets the prediction log; compose merges this with docker-compose.yml.
+  # reports/ is git-ignored. On a Linux host, make reports/prediction_log writable for the container user
+  # (logging failures are swallowed, serving is never affected).
+  api:
+    environment:
+      PREDICTION_LOG_PATH: /prediction_log/predictions.jsonl
+    volumes:
+      - ./reports/prediction_log:/prediction_log
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./infra/prometheus:/etc/prometheus:ro
+      - promdata:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - api
+      - node-exporter
+
+  # Also the transport for the drift script's metrics: it drops reports/metrics/*.prom (textfile collector).
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    command:
+      - --collector.textfile.directory=/textfile
+    volumes:
+      - ./reports/metrics:/textfile:ro
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/etc/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+      - postgres
+
+volumes:
+  promdata:
+  grafanadata:
