@@ -29,14 +29,14 @@ Cách đưa drift vào Prometheus: Teammate 1 và 2 thống nhất MỘT cách n
 
 ## Checklist
 
-### Bạn — Stage E
-- [ ] Kiểm tra `docker --version` và Docker Desktop chạy được.
-- [ ] `docker/serving/Dockerfile` (Python 3.11-slim, user không phải root), `docker/mlflow/Dockerfile`.
-- [ ] `docker-compose.yml`: `postgres` (healthcheck), `mlflow`, `api`, `trainer` (chạy một lần). Mật khẩu và cấu hình đọc từ `.env`.
-- [ ] Đổi `MLFLOW_TRACKING_URI` sang server (qua biến môi trường), train lại.
-- [ ] Ghim version thư viện, cài thử trên Python 3.11 (đặc biệt Evidently).
-- [ ] Kiểm tra: `docker compose up -d` rồi train rồi promote rồi gọi `/predict/churn` rồi `down`.
-- [ ] Đẩy khung compose và Dockerfile API sớm (ngày đầu) để hai bạn kia dùng được.
+### Bạn — Stage E (xong 2026-11-16, đã merge PR #1)
+- [x] Kiểm tra `docker --version` và Docker Desktop chạy được.
+- [x] `docker/serving/Dockerfile` (Python 3.12-slim, user không phải root), `docker/mlflow/Dockerfile`.
+- [x] `docker-compose.yml`: `postgres` (healthcheck), `mlflow`, `api`, `trainer` (chạy một lần). Mật khẩu và cấu hình đọc từ `.env`.
+- [x] Đổi `MLFLOW_TRACKING_URI` sang server (qua biến môi trường), train lại.
+- [x] Ghim version thư viện, cài thử trên Python 3.12 (xgboost 3.4 cần >= 3.12; Evidently chưa kiểm tra, việc của Teammate 2).
+- [x] Kiểm tra: `docker compose up -d` rồi train rồi promote rồi gọi `/predict/churn` rồi `down`.
+- [x] Đẩy khung compose và Dockerfile API sớm (ngày đầu) để hai bạn kia dùng được.
 
 ### Teammate 1 — Stage H (metrics và dashboard)
 - [ ] `serving/metrics.py` với các metric ở bảng trên; gắn `/metrics` vào `app.py`; test không làm hỏng test API cũ.

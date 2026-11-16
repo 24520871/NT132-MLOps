@@ -39,13 +39,14 @@ Python, scikit-learn/XGBoost, MLflow, DVC, Airflow, FastAPI, Docker, GitHub Acti
 - Ask before downloading anything (Kaggle needs a login; user supplies the CSV).
 - Never commit `data/`, `.venv/`, `mlflow.db`, `mlruns/`.
 - Don't present synthetic-data metrics as real results.
-- Environment: Windows 11, Python 3.14, PowerShell. Not a git repo yet (ask before `git init`).
+- Environment: Windows 11, Python 3.14, PowerShell. Git repo on GitHub (`24520871/NT132-MLOps`); work on feature branches and merge via PR; commit/push only when the user says so.
 
 ## Status
 - [x] Scaffold: stub files for all stages, requirements, .gitignore, venv
 - [x] A data, B train/MLflow, C gate/promote, D FastAPI + README — **M1 local MVP done 2026-10-28, 43 tests pass** (details: `docs/BUILD_PLAN.md` progress log)
-- State: real Telco CSV in `data/raw/` (DVC-tracked, no git); `mlflow.db` has `churn` v1 = `production`; run `pip install -e .` in `.venv` first
+- State: real Telco CSV in `data/raw/` (DVC-tracked with `dvc init --no-scm`; the small public CSV is also committed to git); `mlflow.db` has `churn` v1 = `production`; run `pip install -e .` in `.venv` first
 - Direction 2026-11-15: team goal is a working dashboard first. Order **E -> H**; F (AWS) and G (Airflow) deferred; staging/rollback stay in G/I. Split in `docs/TASKS_DASHBOARD.md`. Three people work in parallel on branches; only the stage owner edits shared files.
-- [ ] E Docker Compose, F AWS deploy (M2, deferred)
+- [x] E Docker Compose done 2026-11-16 (postgres + mlflow server + api + on-demand trainer, Python 3.12 images; start with `docker compose up -d --build`, then `docker compose run --rm trainer`; needs `.env` copied from `.env.example`)
+- [ ] F AWS deploy (M2, deferred)
 - [ ] G Airflow, H monitoring, I retrain+rollback (M3)
 - [ ] J CI/CD, K other use cases, L report (M4)
