@@ -27,6 +27,8 @@ Không làm trong đợt này: F (AWS), G (Airflow), J (CI/CD), K (use case khá
 
 Cách đưa drift vào Prometheus: Teammate 1 và 2 thống nhất MỘT cách ngay từ đầu (đề xuất: script drift ghi vào file textfile, hoặc một endpoint `/metrics` nhỏ riêng). Ghi lựa chọn vào đầu file này khi chốt.
 
+**Đã chốt (Teammate 1, 2026-11-16): textfile collector.** Script drift ghi `reports/metrics/drift.prom` (định dạng Prometheus, tên metric đúng bảng trên, không label; dùng `prometheus_client.write_to_textfile` để ghi nguyên tử). Thư mục này được mount vào node-exporter; Prometheus scrape node-exporter nên không cần exporter riêng. Log dự đoán: `reports/prediction_log/predictions.jsonl` (đọc bằng `mlops.serving.prediction_log.read_prediction_log`), chỉ ghi khi API có env `PREDICTION_LOG_PATH` (overlay monitoring đã đặt sẵn).
+
 ## Checklist
 
 ### Bạn — Stage E (xong 2026-11-16, đã merge PR #1)
@@ -39,11 +41,11 @@ Cách đưa drift vào Prometheus: Teammate 1 và 2 thống nhất MỘT cách n
 - [x] Đẩy khung compose và Dockerfile API sớm (ngày đầu) để hai bạn kia dùng được.
 
 ### Teammate 1 — Stage H (metrics và dashboard)
-- [ ] `serving/metrics.py` với các metric ở bảng trên; gắn `/metrics` vào `app.py`; test không làm hỏng test API cũ.
-- [ ] `serving/prediction_log.py`: ghi request và dự đoán (file hoặc bảng), cho Teammate 2 dùng.
-- [ ] `infra/prometheus/prometheus.yml` (scrape API, và exporter drift nếu có), `alerts.yml` (lỗi cao, latency cao, drift).
-- [ ] `infra/grafana/`: provisioning datasource và dashboard JSON. Panel: request/s, p95 latency, tỉ lệ lỗi, tỉ lệ dự đoán churn, phân phối xác suất, version model đang chạy, drift score, kết quả gate gần nhất.
-- [ ] `docker-compose.monitoring.yml` (Prometheus, Grafana, tùy chọn node-exporter / cAdvisor); mật khẩu Grafana lấy từ `.env`.
+- [x] `serving/metrics.py` với các metric ở bảng trên; gắn `/metrics` vào `app.py`; test không làm hỏng test API cũ.
+- [x] `serving/prediction_log.py`: ghi request và dự đoán (file hoặc bảng), cho Teammate 2 dùng.
+- [x] `infra/prometheus/prometheus.yml` (scrape API, và exporter drift nếu có), `alerts.yml` (lỗi cao, latency cao, drift).
+- [x] `infra/grafana/`: provisioning datasource và dashboard JSON. Panel: request/s, p95 latency, tỉ lệ lỗi, tỉ lệ dự đoán churn, phân phối xác suất, version model đang chạy, drift score, kết quả gate gần nhất.
+- [x] `docker-compose.monitoring.yml` (Prometheus, Grafana, tùy chọn node-exporter / cAdvisor); mật khẩu Grafana lấy từ `.env`.
 
 ### Teammate 2 — Stage H (drift và replay)
 - [ ] Kiểm tra Evidently cài được trên Python 3.11 và 3.14 (báo ngay nếu 3.14 không được).
