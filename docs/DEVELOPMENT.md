@@ -80,6 +80,18 @@ Env vars: `MLFLOW_TRACKING_URI` (default local `mlflow.db`), `MLFLOW_ARTIFACT_RO
 .venv\Scripts\python -m pytest tests -q
 ```
 
+## Drift replay and monitoring
+Run the deterministic synthetic replay (no project dataset or API calls are used):
+```powershell
+.venv\Scripts\python -m scripts.replay_drift --seed 42
+# Or, when GNU Make is available:
+make drift
+```
+The replay writes simulated drift metrics to `reports/metrics/drift.prom` and HTML summaries to
+`reports/drift/`. Prometheus reads the textfile through node-exporter. Recall/AUC are exported only
+when the prediction log contains valid ground-truth labels; the serving log does not include labels by
+default, so those metrics are normally unavailable.
+
 ## Troubleshooting
 - **`Dataset not found`** — put the CSV in `data/raw/` (see above).
 - **API returns 503 `No 'production' model`** — run steps 1 and 2.

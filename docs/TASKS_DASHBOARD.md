@@ -48,16 +48,16 @@ Cách đưa drift vào Prometheus: Teammate 1 và 2 thống nhất MỘT cách n
 - [x] `docker-compose.monitoring.yml` (Prometheus, Grafana, tùy chọn node-exporter / cAdvisor); mật khẩu Grafana lấy từ `.env`.
 
 ### Teammate 2 — Stage H (drift và replay)
-- [ ] Kiểm tra Evidently cài được trên Python 3.11 và 3.14 (báo ngay nếu 3.14 không được).
-- [ ] `monitoring/drift.py`: so dữ liệu tham chiếu (train) với dữ liệu mới, xuất `data_drift_share`, `data_drift_detected`, HTML report vào `reports/` (đã git-ignore).
-- [ ] `monitoring/perf_monitor.py`: tính recall / AUC trên lát replay có nhãn.
-- [ ] `scripts/replay_drift.py`: gửi dữ liệu bình thường rồi dữ liệu bị lệch (ví dụ đổi phân phối `tenure`, `MonthlyCharges`, `Contract`) vào API hoặc vào bước drift. Ghi rõ là mô phỏng.
-- [ ] `make drift`; test unit cho hàm drift với dữ liệu nhỏ.
+- [ ] Kiểm tra Evidently trên Python 3.11 và 3.14. Đã thử Python 3.12 với pandas 3.1.0 của project: Evidently 0.7.23 cài được nhưng lỗi import `infer_dtype_from_object`; dùng SciPy hiện có làm phương án thay thế, không đổi dependency.
+- [x] `monitoring/drift.py`: so feature tham chiếu/current bằng KS và chi-square; loại target/metadata; xuất `data_drift_share`, `data_drift_detected` và HTML report vào `reports/`.
+- [x] `monitoring/perf_monitor.py`: tính recall / AUC chỉ khi prediction log có ground-truth hợp lệ; nếu không thì để unavailable.
+- [x] `scripts/replay_drift.py`: tạo normal và shifted synthetic feature batches trong bộ nhớ; đánh dấu kết quả simulated.
+- [x] `make drift`; unit tests cho drift/performance/replay và Prometheus output.
 
 ### Cả nhóm — kiểm thử cuối
 - [ ] `docker compose up` rồi dashboard có dữ liệu.
 - [ ] Replay dữ liệu lệch làm `data_drift_detected` = 1 và dashboard phản ánh.
-- [ ] 43 test cũ vẫn pass, test mới pass.
+- [x] Toàn bộ test suite cũ và mới pass (77 tests).
 - [ ] Không có bí mật trong repo (`.env` chỉ ở máy từng người).
 
 ## Quy ước làm việc
