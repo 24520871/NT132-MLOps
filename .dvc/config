@@ -1,3 +1,6 @@
 [core]
     no_scm = True
     analytics = false
+    remote = s3remote
+['remote "s3remote"']
+    url = s3://nt132-mlops/dvc

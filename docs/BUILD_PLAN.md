@@ -99,15 +99,15 @@ What I need from the user first
 - AWS account (student credits?), chosen region, a billing budget alert set, a CLI profile or SSO configured, an EC2 key pair, their public IP for security-group rules.
 
 Tasks
-- [ ] Write `docs/runbook.md` AWS section: exact CLI commands for each resource, plus teardown commands. Terraform (`infra/terraform/`) is optional later; do manual/CLI first so it is understood and debuggable.
-- [ ] S3 bucket (versioned, private): DVC remote (`data/`) + MLflow artifact root.
-- [ ] ECR repos (`mlops-api`, `mlops-mlflow`, `mlops-trainer`); build, tag, push images from the laptop.
-- [ ] IAM: instance role (S3 bucket access + ECR pull, least privilege) — no access keys on the instance.
-- [ ] EC2: t3.large (>= 8 GB RAM), Ubuntu LTS, Docker + compose plugin; security group: SSH only from the user's IP, API/MLflow ports only from the user's IP (or API public if user wants a public demo; MLflow/Airflow/Grafana never public).
-- [ ] `docker-compose.prod.yml`: ECR image refs, S3 artifact root, restart policies, env from instance (no secrets in repo).
-- [ ] `dvc remote add` S3 + `dvc push`; MLflow artifacts to S3.
-- [ ] Deploy, run training on the instance, promote, smoke-test `/ready` and `/predict/churn` from the laptop.
-- [ ] Cost controls: stop instance when idle, billing alarm, documented teardown.
+- [x] Write `docs/runbook.md` AWS section: exact CLI commands for each resource, plus teardown commands. Terraform (`infra/terraform/`) is optional later; do manual/CLI first so it is understood and debuggable.
+- [x] S3 bucket (versioned, private): DVC remote (`data/`) + MLflow artifact root.
+- [x] ECR repos (`mlops-api`, `mlops-mlflow`, `mlops-trainer`); build, tag, push images from the laptop.
+- [x] IAM: instance role (S3 bucket access + ECR pull, least privilege) — no access keys on the instance.
+- [x] EC2: t3.large (>= 8 GB RAM), Ubuntu LTS, Docker + compose plugin; security group: SSH only from the user's IP, API/MLflow ports only from the user's IP (or API public if user wants a public demo; MLflow/Airflow/Grafana never public).
+- [x] `docker-compose.prod.yml`: ECR image refs, S3 artifact root, restart policies, env from instance (no secrets in repo).
+- [x] `dvc remote add` S3 + `dvc push`; MLflow artifacts to S3.
+- [x] Deploy, run training on the instance, promote, smoke-test `/ready` and `/predict/churn` from the laptop.
+- [x] Cost controls: stop instance when idle (done 2026-11-23), billing alarm, documented teardown (**teardown commands written but NOT yet run/tested**).
 Done when: a prediction request from the laptop to the EC2 API returns a probability from a model whose artifacts live in S3; teardown commands documented and tested.
 
 ## Stage G — Airflow orchestration

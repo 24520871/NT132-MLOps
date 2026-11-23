@@ -80,7 +80,7 @@ The registry is a fresh Postgres DB, so `churn` v1 is created here; the laptop's
 ```powershell
 curl http://<EC2_PUBLIC_IP>:8000/ready
 ```
-Then open `http://<EC2_PUBLIC_IP>:8000/docs` and call `POST /predict/churn` with the sample from the README. Expected: a churn probability.
+Then open `http://<EC2_PUBLIC_IP>:8000/docs` and call `POST /predict/churn` with the sample payload in `docs/DEVELOPMENT.md` ("Predict (PowerShell)", replace `127.0.0.1` with the instance IP). Expected: a churn probability.
 MLflow UI through a tunnel (port 5000 is bound to localhost on the instance only):
 ```powershell
 ssh -i $HOME\.ssh\mlops-key.pem -L 5000:localhost:5000 ubuntu@<EC2_PUBLIC_IP>
