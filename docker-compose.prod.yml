@@ -1,1 +1,47 @@
-# TODO (Stage F): EC2 overrides: ECR images, S3, restart policies
+# Stage F: EC2 overrides on top of docker-compose.yml. Images come from ECR, MLflow artifacts go to S3.
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
+# Needs in .env on the instance: ECR_REGISTRY, AWS_REGION, S3_BUCKET (+ the POSTGRES_* values). No AWS keys:
+# boto3 gets credentials from the EC2 instance role (see docs/runbook.md, incl. the metadata hop-limit step).
+# Build + push from the laptop with the same pair of files (`build`, then `push`); the `build:` sections
+# come from the base file, so the images are tagged with the ECR names below.
+# `!override` (Compose >= 2.24) replaces a list instead of appending to the base one.
+x-aws: &aws
+  AWS_DEFAULT_REGION: ${AWS_REGION:?set AWS_REGION in .env}
+
+services:
+  postgres:
+    restart: unless-stopped
+
+  mlflow:
+    image: ${ECR_REGISTRY:?set ECR_REGISTRY in .env}/mlops-mlflow:latest
+    platform: linux/amd64   # EC2 t3 is x86; pins the build target even on an ARM laptop
+    restart: unless-stopped
+    environment:
+      <<: *aws
+    # Only reachable through an SSH tunnel (ssh -L 5000:localhost:5000 ...), never public.
+    ports: !override
+      - "127.0.0.1:5000:5000"
+    # Same server as docker/mlflow/Dockerfile, but with S3 as the default artifact root.
+    command: >
+      sh -c "mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri \"$$MLFLOW_BACKEND_STORE_URI\"
+      --default-artifact-root s3://${S3_BUCKET:?set S3_BUCKET in .env}/mlflow-artifacts
+      --allowed-hosts '*'"
+
+  api:
+    image: ${ECR_REGISTRY}/mlops-api:latest
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      <<: *aws
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_ARTIFACT_ROOT: s3://${S3_BUCKET}/mlflow-artifacts
+
+  trainer:
+    image: ${ECR_REGISTRY}/mlops-trainer:latest
+    platform: linux/amd64
+    environment:
+      <<: *aws
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_ARTIFACT_ROOT: s3://${S3_BUCKET}/mlflow-artifacts

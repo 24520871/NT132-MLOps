@@ -47,6 +47,6 @@ Python, scikit-learn/XGBoost, MLflow, DVC, Airflow, FastAPI, Docker, GitHub Acti
 - State: real Telco CSV in `data/raw/` (DVC-tracked with `dvc init --no-scm`; the small public CSV is also committed to git); `mlflow.db` has `churn` v1 = `production`; run `pip install -e .` in `.venv` first
 - Direction 2026-11-15: team goal is a working dashboard first. Order **E -> H**; F (AWS) and G (Airflow) deferred; staging/rollback stay in G/I. Split in `docs/TASKS_DASHBOARD.md`. Three people work in parallel on branches; only the stage owner edits shared files.
 - [x] E Docker Compose done 2026-11-16 (postgres + mlflow server + api + on-demand trainer, Python 3.12 images; start with `docker compose up -d --build`, then `docker compose run --rm trainer`; needs `.env` copied from `.env.example`)
-- [ ] F AWS deploy (M2, deferred)
+- [x] F AWS deploy (M2) done 2026-11-23: ECR images + S3 artifacts + EC2 (`docker-compose.prod.yml`, `docs/runbook.md`); instance is stopped; full teardown untested; monitoring overlay not yet deployed on EC2
 - [ ] G Airflow, [x] H API monitoring + SciPy drift/replay, [ ] I retrain+rollback (M3)
 - [ ] J CI/CD, K other use cases, L report (M4)

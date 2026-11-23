@@ -20,5 +20,98 @@ scikit-learn 1.9.1, xgboost 3.4.1, fastapi 0.162.0, pandas 3.1.0).
 - **Not verified:** MLflow UI was not launched (only the registry/runs were queried through the client API).
   No Docker, Airflow, AWS or git yet.
 
-## AWS (Stage F) — TODO
-Exact CLI commands and teardown steps will be added here.
+## AWS (Stage F) — deploy the MVP on one EC2 instance
+Region `ap-southeast-2`. Stack: `docker-compose.yml` + `docker-compose.prod.yml` (images from ECR, MLflow artifacts in S3).
+Monitoring (Prometheus/Grafana) is added only after the smoke test below passes. Never put AWS keys in `.env`:
+the containers use the EC2 instance role. Commands marked (laptop) run in PowerShell, (ec2) in the SSH session.
+Status: written, **not yet run end to end**.
+
+Prerequisites already created (steps 1-9 of the preparation): budget alert, S3 bucket (private, versioned),
+3 ECR repos (`mlops-api`, `mlops-mlflow`, `mlops-trainer`), role `mlops-ec2-role` + instance profile,
+key pair `mlops-key`, security group `mlops-sg` (22 and 8000 from the owner's IP only), EC2 t3.large with Docker.
+
+### F1. Let containers reach the instance role (ec2 metadata hop limit) (laptop)
+Containers are one network hop behind the instance. With the default hop limit of 1 they cannot read the role
+credentials, and boto3 fails with `NoCredentialsError` when writing to S3.
+```powershell
+aws ec2 modify-instance-metadata-options --instance-id <INSTANCE_ID> --http-put-response-hop-limit 2 --http-tokens required --region ap-southeast-2
+```
+
+### F2. Build and push images (laptop, repo root, Docker Desktop running)
+Copy `.env.example` to `.env` first and fill `POSTGRES_*`, `ECR_REGISTRY`, `AWS_REGION`, `S3_BUCKET` (uncomment the last three).
+```powershell
+$env:DOCKER_DEFAULT_PLATFORM = "linux/amd64"   # belt and braces; docker-compose.prod.yml also pins platform: linux/amd64
+# After pushing, verify: docker image inspect <ECR>/mlops-api:latest --format "{{.Os}}/{{.Architecture}}"  -> linux/amd64
+aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin <ACCOUNT>.dkr.ecr.ap-southeast-2.amazonaws.com
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile train build trainer
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile train push
+```
+Check in the ECR console that all three repos have a `latest` image.
+
+### F3. DVC remote on S3 (laptop, venv active; needs the `dvc-s3` extra)
+```powershell
+.venv\Scripts\python -m pip install "dvc[s3]"
+.venv\Scripts\dvc remote add -d s3remote s3://<BUCKET>/dvc
+.venv\Scripts\dvc push
+```
+Commit the resulting `.dvc/config` change. The small public CSV is also in git, so the instance does not need `dvc pull` for the first run.
+
+### F4. Start the stack (ec2)
+```bash
+git clone https://github.com/24520871/NT132-MLOps.git && cd NT132-MLOps
+git checkout feat/aws-deploy            # or main once the PR is merged
+cp .env.example .env && nano .env       # set POSTGRES_PASSWORD (your own), uncomment/fill ECR_REGISTRY, AWS_REGION, S3_BUCKET
+aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin <ACCOUNT>.dkr.ecr.ap-southeast-2.amazonaws.com
+docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+```
+Expected: postgres healthy, mlflow and api running (the api may report not ready until a model is promoted).
+
+### F5. Train and promote on the instance (ec2)
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile train run --rm trainer
+```
+Check S3 has objects under `mlflow-artifacts/` (console or `aws s3 ls s3://<BUCKET>/mlflow-artifacts/ --recursive | head`).
+The registry is a fresh Postgres DB, so `churn` v1 is created here; the laptop's `mlflow.db` is not carried over.
+
+### F6. Smoke test (laptop)
+```powershell
+curl http://<EC2_PUBLIC_IP>:8000/ready
+```
+Then open `http://<EC2_PUBLIC_IP>:8000/docs` and call `POST /predict/churn` with the sample payload in `docs/DEVELOPMENT.md` ("Predict (PowerShell)", replace `127.0.0.1` with the instance IP). Expected: a churn probability.
+MLflow UI through a tunnel (port 5000 is bound to localhost on the instance only):
+```powershell
+ssh -i $HOME\.ssh\mlops-key.pem -L 5000:localhost:5000 ubuntu@<EC2_PUBLIC_IP>
+```
+then browse `http://localhost:5000`.
+
+### F7. Cost control and teardown
+Stop when idle (disk and any Elastic IP are still billed; the public IP changes on the next start, so update the `8000` security-group rule only if *your* IP changed):
+```powershell
+aws ec2 stop-instances --instance-ids <INSTANCE_ID> --region ap-southeast-2
+aws ec2 start-instances --instance-ids <INSTANCE_ID> --region ap-southeast-2
+```
+Full teardown (irreversible; empties the bucket and deletes images and the instance):
+```powershell
+aws ec2 terminate-instances --instance-ids <INSTANCE_ID> --region ap-southeast-2
+aws ecr delete-repository --repository-name mlops-api --force --region ap-southeast-2
+aws ecr delete-repository --repository-name mlops-mlflow --force --region ap-southeast-2
+aws ecr delete-repository --repository-name mlops-trainer --force --region ap-southeast-2
+aws s3 rb s3://<BUCKET> --force     # versioned bucket: also delete old versions in the console, or use a lifecycle rule
+aws ec2 delete-security-group --group-id <SG_ID> --region ap-southeast-2   # after the instance is gone
+aws ec2 delete-key-pair --key-name mlops-key --region ap-southeast-2
+aws iam remove-role-from-instance-profile --instance-profile-name mlops-ec2-profile --role-name mlops-ec2-role
+aws iam delete-instance-profile --instance-profile-name mlops-ec2-profile
+aws iam delete-role-policy --role-name mlops-ec2-role --policy-name s3-access
+aws iam detach-role-policy --role-name mlops-ec2-role --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+aws iam delete-role --role-name mlops-ec2-role
+```
+Teardown has not been tested yet; run it once after the smoke test and record the result here.
+
+### Known pitfalls
+- `exec format error` in a container: image was built for ARM; rebuild with `DOCKER_DEFAULT_PLATFORM=linux/amd64`.
+- `NoCredentialsError` / 403 on S3: hop limit not raised (F1), role missing S3 permissions, or wrong `S3_BUCKET`.
+- API returns 503 on `/ready`: no model has the `production` alias yet (run F5), or the model was logged before the artifact root pointed at S3.
+- `ports: !override` needs Docker Compose >= 2.24 (`docker compose version`).

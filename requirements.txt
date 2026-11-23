@@ -6,6 +6,7 @@ pandas==3.1.0
 numpy==2.5.4
 scipy==1.18.1
 cloudpickle==3.1.2
+boto3>=1.35,<2  # S3 artifact store on AWS (Stage F); credentials come from the EC2 instance role
 pyyaml==6.0.3
 fastapi==0.162.0
 uvicorn==0.54.0
