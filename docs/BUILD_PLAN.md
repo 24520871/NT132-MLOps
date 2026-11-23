@@ -109,6 +109,7 @@ Tasks
 - [x] Deploy, run training on the instance, promote, smoke-test `/ready` and `/predict/churn` from the laptop.
 - [x] Cost controls: stop instance when idle (done 2026-11-23), billing alarm, documented teardown (**teardown commands written but NOT yet run/tested**).
 Done when: a prediction request from the laptop to the EC2 API returns a probability from a model whose artifacts live in S3; teardown commands documented and tested.
+Status 2026-11-23: deploy + smoke-test done (`/predict/churn` from the laptop returned probability 0.9033, model v1, artifacts in S3). The monitoring overlay (Prometheus/Grafana) also ran on EC2 (targets `api`/`node`/`prometheus` up; dashboard shows serving model v1); see runbook F8. Still open: rate panels (requests/s, p95 latency, predicted churn) not yet confirmed under sustained traffic, drift panel empty until the drift script runs on EC2, full teardown untested. Instance is left running until the owner stops it.
 
 ## Stage G — Airflow orchestration
 Goal: training runs as an Airflow DAG instead of a manual command.
