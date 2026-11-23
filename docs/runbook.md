@@ -110,7 +110,48 @@ aws iam delete-role --role-name mlops-ec2-role
 ```
 Teardown has not been tested yet; run it once after the smoke test and record the result here.
 
+### F8. Monitoring on EC2 (Prometheus + Grafana overlay)
+Run after F6 passes. Ports 3000/9090 are bound to `127.0.0.1` on the instance and are not in the security group:
+reach them through an SSH tunnel only.
+1. (laptop) Start the instance and read its new public IP (it changes on every start):
+```powershell
+aws ec2 start-instances --instance-ids i-045ce62867ca51c51 --region ap-southeast-2
+aws ec2 wait instance-running --instance-ids i-045ce62867ca51c51 --region ap-southeast-2
+aws ec2 describe-instances --instance-ids i-045ce62867ca51c51 --region ap-southeast-2 --query "Reservations[].Instances[].PublicIpAddress" --output text
+```
+If SSH times out, the home IP changed and the security group blocks it: add the new IP as `/32` for ports 22 and 8000
+(`aws ec2 authorize-security-group-ingress --group-name mlops-sg --protocol tcp --port 22 --cidr <IP>/32 --region ap-southeast-2`).
+Keeping both usual home IPs as two `/32` rules is fine; never open 22 to `0.0.0.0/0`.
+2. (ec2) Get the latest code (history of the branch was rewritten once, so reset instead of pull):
+```bash
+cd ~/NT132-MLOps && git fetch origin && git reset --hard origin/feat/aws-deploy
+```
+3. (ec2) Add `GRAFANA_ADMIN_PASSWORD=<your own password>` to `.env` (never commit or paste it), then create the log folders:
+```bash
+mkdir -p reports/prediction_log reports/metrics && chmod -R 777 reports
+```
+Without write access the API silently fails to write the prediction log and those panels stay empty.
+4. (ec2) ECR login (tokens last ~12 h), then start all three files:
+```bash
+aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin 454328770846.dkr.ecr.ap-southeast-2.amazonaws.com
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.monitoring.yml up -d --no-build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.monitoring.yml ps
+```
+5. (laptop) Tunnel and browse `http://localhost:3000` (dashboard "MLOps - Churn overview") and `http://localhost:9090/targets`:
+```powershell
+ssh -i $HOME\.ssh\mlops-key.pem -L 3000:localhost:3000 -L 9090:localhost:9090 ubuntu@<EC2_PUBLIC_IP>
+```
+6. (laptop) Generate traffic so the rate panels show data (about 90 s, using `$body` from `docs/DEVELOPMENT.md`):
+```powershell
+1..90 | ForEach-Object { Invoke-RestMethod -Method Post -Uri http://<EC2_PUBLIC_IP>:8000/predict/churn -ContentType application/json -Body $body | Out-Null; Start-Sleep -Seconds 1 }
+```
+Verification record (2026-11-23): Prometheus targets `api`, `node`, `prometheus` all `up = 1`; Grafana showed "Serving model v1" and the
+predicted-probability histogram after 9 successful predictions (probability 0.9033, model v1). **Not yet confirmed:** the request-rate,
+p95-latency and predicted-churn panels under sustained traffic. "Data drift: no data" is expected until the drift/replay script has run.
+
 ### Known pitfalls
+- SSH `Connection timed out`: home IP changed; see F8 step 1. An empty `$MYIP` gives `CIDR block /32 is malformed`.
+- Compose files must be listed in order base, prod, monitoring (`-f ... -f ... -f ...`); `--no-build` because images come from ECR.
 - `exec format error` in a container: image was built for ARM; rebuild with `DOCKER_DEFAULT_PLATFORM=linux/amd64`.
 - `NoCredentialsError` / 403 on S3: hop limit not raised (F1), role missing S3 permissions, or wrong `S3_BUCKET`.
 - API returns 503 on `/ready`: no model has the `production` alias yet (run F5), or the model was logged before the artifact root pointed at S3.
