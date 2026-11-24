@@ -1,11 +1,11 @@
-"""Train on a small fake frame in an isolated MLflow store, then gate/promote."""
+"""Train on a small fake frame in an isolated MLflow store, then run both gates (candidate -> staging -> production)."""
 import mlflow
 import pytest
 from mlflow.tracking import MlflowClient
 
-from mlops.registry.promote import NoCandidateError, promote_candidate
+from mlops.registry.promote import NoCandidateError, NoStagingError, promote_staging, stage_candidate
 from mlops.training.runner import run_training
-from tests.conftest import make_raw_frame
+from tests.conftest import LENIENT_STAGING, make_raw_frame
 from usecases.churn import data
 from usecases.churn.model import build_models
 
@@ -18,6 +18,35 @@ def trained(mlflow_store, churn_cfg):
     df = data.clean(make_raw_frame(n=600))
     X_tr, X_te, y_tr, y_te = data.split_data(df, churn_cfg)
     return run_training(churn_cfg, build_models(churn_cfg, y_tr), X_tr, X_te, y_tr, y_te, "abc123")
+
+
+def _held_out(churn_cfg, seed=0):
+    """Feature rows standing in for the held-out sample Gate 2 receives."""
+    return data.split_data(data.clean(make_raw_frame(n=600, seed=seed)), churn_cfg)[1]
+
+
+def _alias_version(name, alias):
+    try:
+        return str(MlflowClient().get_model_version_by_alias(name, alias).version)
+    except mlflow.exceptions.MlflowException:
+        return None
+
+
+def _train(churn_cfg, seed):
+    """Train on a fresh fake frame; the best model becomes the new `candidate`."""
+    df = data.clean(make_raw_frame(n=600, seed=seed))
+    X_tr, X_te, y_tr, y_te = data.split_data(df, churn_cfg)
+    return run_training(churn_cfg, build_models(churn_cfg, y_tr), X_tr, X_te, y_tr, y_te)
+
+
+def _promote_to_production(churn_cfg, seed):
+    """Train, then pass both gates (lenient). Returns the new production version."""
+    run = _train(churn_cfg, seed)
+    name = churn_cfg["model_name"]
+    stage_candidate(name, {**LENIENT, "max_auc_drop_vs_production": 1.0})
+    res = promote_staging(name, LENIENT_STAGING, _held_out(churn_cfg), churn_cfg["threshold"])
+    assert res.decision.accepted
+    return run.version
 
 
 def test_logs_one_run_per_model_with_metrics(trained, churn_cfg):
@@ -37,50 +66,72 @@ def test_best_model_registered_as_candidate_only(trained, churn_cfg):
         client.get_model_version_by_alias(churn_cfg["model_name"], "production")
 
 
-def test_accepted_candidate_becomes_production(trained, churn_cfg):
-    res = promote_candidate(churn_cfg["model_name"], LENIENT)
+def test_accepted_candidate_moves_to_staging_not_production(trained, churn_cfg):
+    name = churn_cfg["model_name"]
+    res = stage_candidate(name, LENIENT)
     assert res.decision.accepted
-    client = MlflowClient()
-    assert str(client.get_model_version_by_alias(churn_cfg["model_name"], "production").version) == trained.version
-    with pytest.raises(mlflow.exceptions.MlflowException):  # candidate alias consumed
-        client.get_model_version_by_alias(churn_cfg["model_name"], "candidate")
+    assert _alias_version(name, "staging") == trained.version
+    assert _alias_version(name, "production") is None  # Gate 2 has not run yet
+    assert _alias_version(name, "candidate") is None  # candidate alias consumed
+    assert MlflowClient().get_model_version(name, trained.version).tags["gate"] == "accepted"
 
 
-def test_rejected_candidate_is_not_promoted(trained, churn_cfg):
-    res = promote_candidate(churn_cfg["model_name"], IMPOSSIBLE)
+def test_staging_version_becomes_production_after_gate2(trained, churn_cfg):
+    name = churn_cfg["model_name"]
+    stage_candidate(name, LENIENT)
+    res = promote_staging(name, LENIENT_STAGING, _held_out(churn_cfg), churn_cfg["threshold"])
+    assert res.decision.accepted and res.previous_production is None
+    assert _alias_version(name, "production") == trained.version
+    assert _alias_version(name, "staging") is None
+    assert MlflowClient().get_model_version(name, trained.version).tags["staging_gate"] == "accepted"
+
+
+def test_rejected_candidate_never_reaches_staging(trained, churn_cfg):
+    name = churn_cfg["model_name"]
+    res = stage_candidate(name, IMPOSSIBLE)
     assert not res.decision.accepted
-    client = MlflowClient()
-    with pytest.raises(mlflow.exceptions.MlflowException):
-        client.get_model_version_by_alias(churn_cfg["model_name"], "production")
-    mv = client.get_model_version(churn_cfg["model_name"], trained.version)
+    assert _alias_version(name, "staging") is None and _alias_version(name, "production") is None
+    mv = MlflowClient().get_model_version(name, trained.version)
     assert mv.tags["gate"] == "rejected" and "auc" in mv.tags["gate_reasons"]
 
 
-def test_rejected_candidate_keeps_existing_production(trained, churn_cfg):
+def test_gate2_rejection_keeps_production_and_clears_staging(mlflow_store, churn_cfg):
     name = churn_cfg["model_name"]
-    promote_candidate(name, LENIENT)  # v1 -> production
-    df = data.clean(make_raw_frame(n=600, seed=1))
-    X_tr, X_te, y_tr, y_te = data.split_data(df, churn_cfg)
-    second = run_training(churn_cfg, build_models(churn_cfg, y_tr), X_tr, X_te, y_tr, y_te)
-    res = promote_candidate(name, IMPOSSIBLE)
-    assert not res.decision.accepted and res.previous_production == trained.version
-    assert str(MlflowClient().get_model_version_by_alias(name, "production").version) == trained.version
-    assert second.version != trained.version
+    first = _promote_to_production(churn_cfg, seed=0)
+    second = _train(churn_cfg, seed=1)
+    stage_candidate(name, {**LENIENT, "max_auc_drop_vs_production": 1.0})
+    strict = {**LENIENT_STAGING, "max_positive_rate": 0.0}  # nothing may be predicted positive -> must fail
+    res = promote_staging(name, strict, _held_out(churn_cfg), churn_cfg["threshold"])
+    assert not res.decision.accepted
+    assert _alias_version(name, "production") == first  # untouched
+    assert _alias_version(name, "staging") is None
+    mv = MlflowClient().get_model_version(name, second.version)
+    assert mv.tags["staging_gate"] == "rejected" and "positive rate" in mv.tags["staging_gate_reasons"]
 
 
-def test_second_promotion_records_previous_production(trained, churn_cfg):
+def test_gate1_rejection_keeps_existing_production(mlflow_store, churn_cfg):
     name = churn_cfg["model_name"]
-    promote_candidate(name, LENIENT)
-    df = data.clean(make_raw_frame(n=600, seed=2))
-    X_tr, X_te, y_tr, y_te = data.split_data(df, churn_cfg)
-    second = run_training(churn_cfg, build_models(churn_cfg, y_tr), X_tr, X_te, y_tr, y_te)
-    lenient_any = {**LENIENT, "max_auc_drop_vs_production": 1.0}
-    assert promote_candidate(name, lenient_any).decision.accepted
-    client = MlflowClient()
-    assert str(client.get_model_version_by_alias(name, "production").version) == second.version
-    assert str(client.get_model_version_by_alias(name, "previous_production").version) == trained.version
+    first = _promote_to_production(churn_cfg, seed=0)
+    _train(churn_cfg, seed=1)
+    res = stage_candidate(name, IMPOSSIBLE)
+    assert not res.decision.accepted and res.previous_production == first
+    assert _alias_version(name, "production") == first
+    assert _alias_version(name, "staging") is None
 
 
-def test_promote_without_candidate_errors(mlflow_store, churn_cfg):
+def test_second_promotion_records_previous_production(mlflow_store, churn_cfg):
+    name = churn_cfg["model_name"]
+    first = _promote_to_production(churn_cfg, seed=0)
+    second = _promote_to_production(churn_cfg, seed=2)
+    assert _alias_version(name, "production") == second
+    assert _alias_version(name, "previous_production") == first
+
+
+def test_stage_without_candidate_errors(mlflow_store, churn_cfg):
     with pytest.raises(NoCandidateError, match="Run training first"):
-        promote_candidate(churn_cfg["model_name"], LENIENT)
+        stage_candidate(churn_cfg["model_name"], LENIENT)
+
+
+def test_gate2_without_staging_version_errors(trained, churn_cfg):
+    with pytest.raises(NoStagingError, match="Run Gate 1 first"):
+        promote_staging(churn_cfg["model_name"], LENIENT_STAGING, _held_out(churn_cfg), churn_cfg["threshold"])

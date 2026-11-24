@@ -27,3 +27,11 @@ gate:
   min_auc: 0.80
   min_recall: 0.60
   max_auc_drop_vs_production: 0.0   # candidate AUC must be >= production AUC - this
+
+# Gate 2 (staging -> production), run on a sample of the held-out test split. Proposed values, not yet confirmed.
+staging_gate:
+  sample_size: 500
+  min_positive_rate: 0.05           # share of rows predicted churn (data has ~26.5 % churners)
+  max_positive_rate: 0.70
+  max_mean_abs_diff_vs_production: 0.25   # mean |p_staging - p_production| on the same rows
+  max_p95_latency_ms: 500           # single-row predict_proba

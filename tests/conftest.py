@@ -38,6 +38,17 @@ def raw_frame() -> pd.DataFrame:
     return make_raw_frame()
 
 
+# Gate settings that accept any trained model, for tests that only need a model in production
+LENIENT_GATE = {"min_auc": 0.0, "min_recall": 0.0, "max_auc_drop_vs_production": 1.0}
+LENIENT_STAGING = {
+    "sample_size": 100,
+    "min_positive_rate": 0.0,
+    "max_positive_rate": 1.0,
+    "max_mean_abs_diff_vs_production": 1.0,
+    "max_p95_latency_ms": 60_000,
+}
+
+
 def small_cfg() -> dict:
     """Real config with tiny models so tests stay fast."""
     cfg = copy.deepcopy(load_config("churn"))
