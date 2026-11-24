@@ -149,6 +149,21 @@ Verification record (2026-11-23): Prometheus targets `api`, `node`, `prometheus`
 predicted-probability histogram after 9 successful predictions (probability 0.9033, model v1). **Not yet confirmed:** the request-rate,
 p95-latency and predicted-churn panels under sustained traffic. "Data drift: no data" is expected until the drift/replay script has run.
 
+## Airflow (Stage G) — local, docker compose overlay
+Not deployed on EC2 yet (deliberately skipped when Stage G was written). Needs Docker Desktop running.
+1. Add to `.env` (see `.env.example`): `AIRFLOW_DB_PASSWORD`, `AIRFLOW_ADMIN_PASSWORD`, `AIRFLOW_SECRET_KEY` (your own values).
+2. Start: `docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d --build` (first build installs the ML stack into the image's `mlops-venv`, several minutes).
+3. Open `http://localhost:8080` (user `admin`). DAGs are created paused: unpause `training_dag`, then "Trigger DAG".
+   CLI alternative: `docker compose -f docker-compose.yml -f docker-compose.airflow.yml exec airflow-scheduler airflow dags trigger training_dag`.
+4. Expected run: `validate_data` -> `train_evaluate` -> `gate1_to_staging` -> `gate2_to_production` -> `reload_api`, all green. In the MLflow UI the registered model `churn` gets a new version with `production`, the old one `previous_production`. A gate rejection shows the gate task and the ones after it as *skipped* (not failed) and production stays untouched; the reasons are tags on the model version (`gate_reasons`, `staging_gate_reasons`) and in the task log.
+5. `ingest_dag` (daily, `@daily`) only validates the dataset.
+Notes
+- The DAG tasks call `$MLOPS_PYTHON` (separate venv in the Airflow image); the Airflow Python never imports scikit-learn/mlflow.
+- Task logs: Airflow UI, or the `airflowlogs` volume. Airflow's metadata is in its own `airflow-db` Postgres (volume `airflowdb`).
+- Memory: Airflow adds about 2 GB; on EC2 use >= t3.xlarge and add the Airflow services to a prod override (ECR image, S3 artifact root) first.
+- Without Airflow the same flow still works: `docker compose run --rm trainer` (train + both gates).
+- Not yet exercised end to end (see `docs/BUILD_PLAN.md` Stage G): first local run may need small fixes (volume permissions: set `AIRFLOW_UID` to the owner of `mlartifacts`).
+
 ### Known pitfalls
 - SSH `Connection timed out`: home IP changed; see F8 step 1. An empty `$MYIP` gives `CIDR block /32 is malformed`.
 - Compose files must be listed in order base, prod, monitoring (`-f ... -f ... -f ...`); `--no-build` because images come from ECR.

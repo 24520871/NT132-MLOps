@@ -41,7 +41,9 @@ anything else under `data/` stays out of git.
 # 1. Train both models (logistic regression + XGBoost); best by AUC is registered as `candidate`
 .venv\Scripts\python -m usecases.churn.train
 
-# 2. Quality gate + promote (exit code 0 = promoted, 1 = rejected, 2 = no candidate)
+# 2. Gate 1 (metrics) -> `staging`, then Gate 2 (staging check on held-out rows) -> `production`
+#    exit code 0 = promoted, 1 = rejected by a gate, 2 = nothing to promote
+#    (--stage gate1 or --stage gate2 runs just one step)
 .venv\Scripts\python -m mlops.registry.promote churn
 
 # 3. Serve (Swagger UI at http://127.0.0.1:8000/docs)
@@ -67,13 +69,15 @@ Or use the "Try it out" button on `/docs`.
 |---|---|
 | `GET /health` | Process is up |
 | `GET /ready` | 200 if a `production` model is loadable, else 503 with instructions |
+| `POST /admin/reload` | Re-check the `production` alias now (otherwise the API re-checks every `MODEL_POLL_SECONDS`, default 30). Needs header `X-Admin-Token` only if `ADMIN_TOKEN` is set |
 | `POST /predict/churn` | Returns `prediction`, `label`, `probability`, `model_version`; 422 on invalid input, 503 if no production model |
 
 ## Configuration
 `usecases/churn/config.yaml` holds the dataset path, split seed, model parameters, threshold and
-quality-gate thresholds (`min_auc`, `min_recall`, max AUC drop vs production).
+Gate 1 thresholds (`gate`: `min_auc`, `min_recall`, max AUC drop vs production) and Gate 2 thresholds
+(`staging_gate`: sample size, positive-rate range, max mean |dp| vs production, max p95 latency).
 Env vars: `MLFLOW_TRACKING_URI` (default local `mlflow.db`), `MLFLOW_ARTIFACT_ROOT` (default `./mlruns`),
-`DATA_PATH`, `PROJECT_ROOT`.
+`DATA_PATH`, `PROJECT_ROOT`, `MODEL_POLL_SECONDS`, `ADMIN_TOKEN`.
 
 ## Tests
 ```powershell
