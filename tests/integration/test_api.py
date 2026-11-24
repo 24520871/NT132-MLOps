@@ -3,15 +3,13 @@ import mlflow
 import pytest
 from fastapi.testclient import TestClient
 
-from mlops.registry.promote import promote_candidate
+from mlops.registry.promote import promote_staging, stage_candidate
 from mlops.serving.app import create_app
 from mlops.serving.router import ModelRouter
 from mlops.training.runner import run_training
-from tests.conftest import make_raw_frame, small_cfg
+from tests.conftest import LENIENT_GATE, LENIENT_STAGING, make_raw_frame, small_cfg
 from usecases.churn import data
 from usecases.churn.model import build_models
-
-LENIENT = {"min_auc": 0.0, "min_recall": 0.0, "max_auc_drop_vs_production": 1.0}
 
 SAMPLE = {
     "gender": "Female", "SeniorCitizen": 0, "Partner": "Yes", "Dependents": "No", "tenure": 5,
@@ -27,7 +25,8 @@ def _train_and_promote(cfg, seed=0):
     df = data.clean(make_raw_frame(n=600, seed=seed))
     X_tr, X_te, y_tr, y_te = data.split_data(df, cfg)
     run_training(cfg, build_models(cfg, y_tr), X_tr, X_te, y_tr, y_te)
-    promote_candidate(cfg["model_name"], LENIENT)
+    stage_candidate(cfg["model_name"], LENIENT_GATE)
+    promote_staging(cfg["model_name"], LENIENT_STAGING, X_te, cfg["threshold"])
 
 
 def _use_store(monkeypatch, tmp_path):
@@ -125,8 +124,34 @@ def test_docs_available(served):
     assert "/predict/churn" in client.get("/openapi.json").json()["paths"]
 
 
-def test_new_production_version_is_picked_up_without_restart(served):
+def test_admin_reload_picks_up_new_production_version(served):
     client, cfg = served
-    _train_and_promote(cfg, seed=3)  # promotes v2
+    _train_and_promote(cfg, seed=3)  # promotes v2; the router still trusts its cached alias lookup
+    r = client.post("/admin/reload")
+    assert r.status_code == 200 and r.json()["model_version"] == "2"
     assert client.post("/predict/churn", json=SAMPLE).json()["model_version"] == "2"
     assert client.get("/ready").json()["model_version"] == "2"
+
+
+def test_admin_reload_requires_token_when_configured(served, monkeypatch):
+    client, _ = served
+    monkeypatch.setenv("ADMIN_TOKEN", "s3cret")
+    assert client.post("/admin/reload").status_code == 401
+    assert client.post("/admin/reload", headers={"X-Admin-Token": "wrong"}).status_code == 401
+    assert client.post("/admin/reload", headers={"X-Admin-Token": "s3cret"}).status_code == 200
+
+
+def test_admin_reload_503_without_production_model(empty_client):
+    assert empty_client.post("/admin/reload").status_code == 503
+
+
+def test_router_polls_alias_and_caches_between_polls(mlflow_store, churn_cfg):
+    name = churn_cfg["model_name"]
+    _train_and_promote(churn_cfg)  # v1 -> production
+    polling = ModelRouter(name, poll_seconds=0)  # checks on every call
+    cached = ModelRouter(name, poll_seconds=3600)  # trusts the first lookup
+    assert polling.get()[1] == "1" and cached.get()[1] == "1"
+    _train_and_promote(churn_cfg, seed=5)  # v2 -> production
+    assert polling.get()[1] == "2"  # alias poll noticed the new version
+    assert cached.get()[1] == "1"  # still within the poll window
+    assert cached.reload()[1] == "2"  # reload forces a check
