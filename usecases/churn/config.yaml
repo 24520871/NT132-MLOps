@@ -27,3 +27,6 @@ gate:
   min_auc: 0.80
   min_recall: 0.60
   max_auc_drop_vs_production: 0.0   # candidate AUC must be >= production AUC - this
+
+rollback:
+  cooldown_seconds: null           # unset until the team confirms a cooldown duration
