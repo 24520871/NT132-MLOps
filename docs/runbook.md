@@ -180,8 +180,30 @@ synthetic data. In Airflow, `training_dag.validate_data` invokes the same module
 completion of this validation task, so a failed check blocks training and all later tasks.
 
 This pre-training data validation is separate from **model Gate 1**, which evaluates trained model
-metrics after training. Gate 2, promotion behavior, API reload, and the full training pipeline still
-require their own integration and execution verification.
+metrics after training. The model promotion CLI now has three explicit stages:
+
+```powershell
+.venv\Scripts\python.exe -m mlops.registry.promote churn --stage gate1
+.venv\Scripts\python.exe -m mlops.registry.promote churn --stage gate2
+.venv\Scripts\python.exe -m mlops.registry.promote churn --stage promote
+```
+
+Gate 1 reads the configured AUC/recall thresholds and places an accepted candidate under `staging`;
+it does not change `production`. Gate 2 requires an existing `production` alias, then checks the
+staging and production model signatures against the churn feature schema, loads both models, and
+requires finite, valid class probabilities on the same held-out feature rows. Prediction comparison
+and measured latency are recorded as informational observations only; they do not decide the result.
+Missing baseline, incompatible signatures, load/prediction errors, or invalid prediction outputs
+prevent promotion. The final `promote` stage rechecks accepted Gate 1/Gate 2 tags and that Gate 2's
+production baseline is still current before updating `previous_production` and `production` aliases.
+Rejected gates leave the production alias unchanged. CLI exit codes are 0 for accepted, 1 for a
+gate rejection, and 2 for missing registry state or an operational/configuration error.
+
+Gate 2 deliberately requires a production baseline, so a registry with no production model cannot
+bootstrap its first production version through this flow yet. Provisioning that initial baseline
+needs a separately agreed procedure. The Airflow training DAG orders data validation, training,
+Gate 1, Gate 2, guarded promotion, and API reload; a rejected gate skips downstream tasks. DAG import
+and task behavior should be verified separately from a live training/retraining run.
 
 Troubleshooting: a missing file reports the configured dataset name and asks you to place the CSV under
 `data/raw/` or set `DATA_PATH`. Schema failures identify the missing or invalid fields in the JSON
@@ -209,6 +231,6 @@ docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-
 Open `http://localhost:8080` with user `admin` and the configured password. Check the Airflow health
 endpoint at `http://localhost:8080/health` and confirm `training_dag`, `ingest_dag`, and
 `monitoring_dag` appear before unpausing schedules. The pre-training data-check command is implemented
-and can be verified independently as above. Do not treat DAG visibility or data-check success as proof
-that the post-training model Gate 1, Gate 2, promotion, API reload, or the full retraining pipeline can
-run end to end.
+and can be verified independently as above. The post-training Gate 1/Gate 2/promotion interfaces are
+implemented, but DAG visibility and unit tests do not prove that the complete training/retraining
+pipeline, real MLflow artifact loading, or API reload has been verified end to end.

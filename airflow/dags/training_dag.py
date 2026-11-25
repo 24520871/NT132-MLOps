@@ -1,4 +1,4 @@
-"""Training pipeline: validate data -> train + evaluate -> Gate 1 -> staging -> Gate 2 -> production -> API reload.
+"""Training pipeline: validate -> train -> Gate 1 -> Gate 2 -> promote -> API reload.
 
 Every step runs the platform's own CLI inside the separate `mlops-venv` of the Airflow image ($MLOPS_PYTHON),
 so Airflow's dependencies never clash with scikit-learn / xgboost / mlflow. Nothing from `mlops` is imported here.
@@ -14,11 +14,11 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 
-REJECTED = 1  # exit code of mlops.registry.promote when a gate rejects the model
+REJECTED = 1  # a rejected gate is skipped, and all downstream tasks require all_success
 
 with DAG(
     dag_id="training_dag",
-    description="ingest/validate -> train -> Gate 1 -> staging -> Gate 2 -> production",
+    description="validate -> train -> Gate 1 (staging) -> Gate 2 -> production promotion",
     schedule=None,  # manual for now; Stage I triggers it from drift / performance decay
     start_date=datetime(2026, 1, 1),
     catchup=False,
@@ -42,8 +42,13 @@ with DAG(
         skip_on_exit_code=REJECTED,
     )
     gate2_production = BashOperator(
-        task_id="gate2_to_production",
+        task_id="gate2_check",
         bash_command="$MLOPS_PYTHON -m mlops.registry.promote {{ params.usecase }} --stage gate2",
+        skip_on_exit_code=REJECTED,
+    )
+    promote_production = BashOperator(
+        task_id="promote_production",
+        bash_command="$MLOPS_PYTHON -m mlops.registry.promote {{ params.usecase }} --stage promote",
         skip_on_exit_code=REJECTED,
     )
     reload_api = BashOperator(
@@ -53,4 +58,4 @@ with DAG(
         retry_delay=timedelta(seconds=30),
     )
 
-    validate_data >> train >> gate1_staging >> gate2_production >> reload_api
+    validate_data >> train >> gate1_staging >> gate2_production >> promote_production >> reload_api

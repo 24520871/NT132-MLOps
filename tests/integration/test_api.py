@@ -2,8 +2,14 @@
 import mlflow
 import pytest
 from fastapi.testclient import TestClient
+from mlflow.tracking import MlflowClient
 
-from mlops.registry.promote import promote_candidate
+from mlops.registry.promote import (
+    PRODUCTION,
+    gate1_candidate,
+    gate2_staging,
+    promote_staging,
+)
 from mlops.serving.app import create_app
 from mlops.serving.router import ModelRouter
 from mlops.training.runner import run_training
@@ -26,8 +32,17 @@ SAMPLE = {
 def _train_and_promote(cfg, seed=0):
     df = data.clean(make_raw_frame(n=600, seed=seed))
     X_tr, X_te, y_tr, y_te = data.split_data(df, cfg)
-    run_training(cfg, build_models(cfg, y_tr), X_tr, X_te, y_tr, y_te)
-    promote_candidate(cfg["model_name"], LENIENT)
+    trained = run_training(cfg, build_models(cfg, y_tr), X_tr, X_te, y_tr, y_te)
+    client = MlflowClient()
+    try:
+        client.get_model_version_by_alias(cfg["model_name"], PRODUCTION)
+    except mlflow.exceptions.MlflowException:
+        # Gate 2 requires a baseline; seed the first test model as the baseline.
+        client.set_registered_model_alias(cfg["model_name"], PRODUCTION, trained.version)
+    test_gate = {**cfg["gate"], **LENIENT}
+    assert gate1_candidate(cfg["model_name"], test_gate).decision.accepted
+    assert gate2_staging(cfg).decision.accepted
+    assert promote_staging(cfg["model_name"]).decision.accepted
 
 
 def _use_store(monkeypatch, tmp_path):

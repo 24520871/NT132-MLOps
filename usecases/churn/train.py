@@ -1,7 +1,7 @@
 """Train the churn models and register the best as `candidate`.
 
 Run from anywhere:  python -m usecases.churn.train
-Then gate and promote:  python -m mlops.registry.promote churn
+Then run Gate 1, Gate 2, and guarded promotion with `mlops.registry.promote --stage ...`.
 """
 import logging
 

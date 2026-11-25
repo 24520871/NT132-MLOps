@@ -35,3 +35,23 @@ def test_accepts_equal_to_production():
 def test_tolerance_allows_small_drop():
     gate = {**GATE, "max_auc_drop_vs_production": 0.01}
     assert evaluate_gate({"auc": 0.845, "recall": 0.7}, gate, production={"auc": 0.85}).accepted
+
+
+def test_rejects_missing_candidate_metric():
+    decision = evaluate_gate({"auc": 0.9}, GATE)
+    assert not decision.accepted
+    assert "recall" in decision.summary()
+
+
+def test_rejects_non_finite_metric():
+    decision = evaluate_gate({"auc": float("nan"), "recall": 0.7}, GATE)
+    assert not decision.accepted
+    assert "auc" in decision.summary()
+
+
+def test_rejects_missing_production_baseline_metric():
+    decision = evaluate_gate(
+        {"auc": 0.9, "recall": 0.7}, GATE, production={"recall": 0.7}
+    )
+    assert not decision.accepted
+    assert "production metric 'auc'" in decision.summary()

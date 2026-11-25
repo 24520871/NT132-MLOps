@@ -15,7 +15,7 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 .venv\Scripts\python -m pip install -e .
 .venv\Scripts\python -m pytest tests -q        # all tests should pass
-make bootstrap                                  # train + promote -> a `production` model (or run steps 1-2 below)
+make bootstrap                                  # requires an existing production baseline for Gate 2
 .venv\Scripts\python -m uvicorn mlops.serving.app:app --port 8000   # Swagger at /docs
 ```
 `mlflow.db` and `mlruns/` are local and git-ignored: every teammate trains their own copy.
@@ -41,8 +41,11 @@ anything else under `data/` stays out of git.
 # 1. Train both models (logistic regression + XGBoost); best by AUC is registered as `candidate`
 .venv\Scripts\python -m usecases.churn.train
 
-# 2. Quality gate + promote (exit code 0 = promoted, 1 = rejected, 2 = no candidate)
-.venv\Scripts\python -m mlops.registry.promote churn
+# 2. Gate 1 moves an accepted candidate to `staging`; Gate 2 validates it against
+#    the required production baseline; promotion updates aliases only after both pass.
+.venv\Scripts\python -m mlops.registry.promote churn --stage gate1
+.venv\Scripts\python -m mlops.registry.promote churn --stage gate2
+.venv\Scripts\python -m mlops.registry.promote churn --stage promote
 
 # 3. Serve (Swagger UI at http://127.0.0.1:8000/docs)
 .venv\Scripts\python -m uvicorn mlops.serving.app:app --port 8000

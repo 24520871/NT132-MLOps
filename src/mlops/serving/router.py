@@ -33,9 +33,9 @@ class ModelRouter:
             mv = MlflowClient(uri).get_model_version_by_alias(self.model_name, self.alias)
         except MlflowException as exc:
             raise ModelUnavailable(
-                f"No '{self.alias}' model for '{self.model_name}'. Train and promote one first: "
-                f"`python -m usecases.{self.model_name}.train` then "
-                f"`python -m mlops.registry.promote {self.model_name}`. ({exc.message})"
+                f"No '{self.alias}' model for '{self.model_name}'. Train and promote a model "
+                f"by running Gate 1, Gate 2 and guarded promotion. "
+                f"({exc.message})"
             ) from exc
         version = str(mv.version)
         with self._lock:
