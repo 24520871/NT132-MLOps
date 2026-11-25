@@ -157,6 +157,36 @@ p95-latency and predicted-churn panels under sustained traffic. "Data drift: no 
 - API returns 503 on `/ready`: no model has the `production` alias yet (run F5), or the model was logged before the artifact root pointed at S3.
 - `ports: !override` needs Docker Compose >= 2.24 (`docker compose version`).
 
+## Data validation before training
+
+The churn data check is the input gate that runs before any model training. It reads the configured CSV
+(`data/raw/WA_Fn-UseC_-Telco-Customer-Churn.csv` by default; `DATA_PATH` can override it), verifies the
+original CSV header, then uses the existing churn cleaner and schema. The expected raw file has the
+`customerID`, 19 churn feature columns, and `Churn` target. At least 100 rows are required by the
+existing schema. Feature nulls, invalid categories, numeric types/ranges, malformed nonblank
+`TotalCharges`, invalid target labels, and a target missing either class are rejected. Blank
+`TotalCharges` values retain the existing cleaning behavior and become `0.0`.
+
+Run from the repository root:
+
+```powershell
+.venv\Scripts\python.exe -m mlops.data.check churn
+```
+
+The command prints a JSON result with `passed`, dataset filename, row/column counts, checks, and
+failures. It exits `0` when the dataset passes and nonzero when it fails; it never substitutes
+synthetic data. In Airflow, `training_dag.validate_data` invokes the same module through
+`$MLOPS_PYTHON -m mlops.data.check {{ params.usecase }}`. The `train_evaluate` task depends on successful
+completion of this validation task, so a failed check blocks training and all later tasks.
+
+This pre-training data validation is separate from **model Gate 1**, which evaluates trained model
+metrics after training. Gate 2, promotion behavior, API reload, and the full training pipeline still
+require their own integration and execution verification.
+
+Troubleshooting: a missing file reports the configured dataset name and asks you to place the CSV under
+`data/raw/` or set `DATA_PATH`. Schema failures identify the missing or invalid fields in the JSON
+`failures` list. For an Airflow validation failure, inspect the `validate_data` task log before retrying.
+
 ## Local Airflow (Stage G infrastructure)
 
 Airflow 2.10.5 runs as an optional overlay. It uses a dedicated metadata PostgreSQL database and a
@@ -178,6 +208,7 @@ docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-
 
 Open `http://localhost:8080` with user `admin` and the configured password. Check the Airflow health
 endpoint at `http://localhost:8080/health` and confirm `training_dag`, `ingest_dag`, and
-`monitoring_dag` appear before unpausing schedules. Do not trigger `training_dag` until its data-check,
-Gate 1, and Gate 2 command interfaces have been integrated and verified on this branch. Airflow DAG
-visibility alone does not verify that training or promotion can run.
+`monitoring_dag` appear before unpausing schedules. The pre-training data-check command is implemented
+and can be verified independently as above. Do not treat DAG visibility or data-check success as proof
+that the post-training model Gate 1, Gate 2, promotion, API reload, or the full retraining pipeline can
+run end to end.
