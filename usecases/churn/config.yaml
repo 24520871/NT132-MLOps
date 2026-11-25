@@ -29,4 +29,4 @@ gate:
   max_auc_drop_vs_production: 0.0   # candidate AUC must be >= production AUC - this
 
 rollback:
-  cooldown_seconds: null           # unset until the team confirms a cooldown duration
+  cooldown_seconds: 3600           # one hour between rollbacks

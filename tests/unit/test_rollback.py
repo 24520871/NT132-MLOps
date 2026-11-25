@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -92,6 +92,19 @@ def test_cooldown_timestamp_is_recorded_when_configured(registry):
         "churn",
         "last_rollback_at",
     )
+
+
+def test_rollback_is_allowed_after_cooldown(registry):
+    client, _ = registry
+    last_rollback = datetime.now(UTC) - timedelta(seconds=3601)
+    client.get_registered_model.return_value = SimpleNamespace(
+        tags={"last_rollback_at": last_rollback.isoformat()}
+    )
+
+    result = rollback.rollback_model("churn", "cooldown elapsed", cooldown_seconds=3600)
+
+    assert result.rolled_back
+    client.set_registered_model_alias.assert_called_once_with("churn", "production", "1")
 
 
 def test_registry_errors_are_reported_safely(monkeypatch):
