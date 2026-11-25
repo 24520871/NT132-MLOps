@@ -28,5 +28,8 @@ gate:
   min_recall: 0.60
   max_auc_drop_vs_production: 0.0   # candidate AUC must be >= production AUC - this
 
+monitoring:
+  recall_drop_threshold: 0.05       # Stage I: documented drop from gate-time recall
+
 rollback:
   cooldown_seconds: 3600           # one hour between rollbacks
