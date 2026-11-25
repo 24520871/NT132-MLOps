@@ -156,3 +156,28 @@ p95-latency and predicted-churn panels under sustained traffic. "Data drift: no 
 - `NoCredentialsError` / 403 on S3: hop limit not raised (F1), role missing S3 permissions, or wrong `S3_BUCKET`.
 - API returns 503 on `/ready`: no model has the `production` alias yet (run F5), or the model was logged before the artifact root pointed at S3.
 - `ports: !override` needs Docker Compose >= 2.24 (`docker compose version`).
+
+## Local Airflow (Stage G infrastructure)
+
+Airflow 2.10.5 runs as an optional overlay. It uses a dedicated metadata PostgreSQL database and a
+separate `/opt/airflow/mlops-venv` for project commands. The Airflow services join the same Compose
+network as the API, MLflow, and Prometheus when all three files below are used together. The DAGs are
+mounted read-only; dataset and MLflow artifact paths are shared with the stack.
+
+Copy `.env.example` to `.env` if needed, then set unique local values for `AIRFLOW_DB_PASSWORD`,
+`AIRFLOW_ADMIN_PASSWORD`, and `AIRFLOW_SECRET_KEY`. This does not require replacing an existing `.env`.
+For Linux hosts, set `AIRFLOW_UID` to the host UID that owns the shared artifact volume.
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.airflow.yml config
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.airflow.yml config --services
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.airflow.yml build airflow-webserver airflow-scheduler
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.airflow.yml up -d airflow-db airflow-init airflow-webserver airflow-scheduler
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.airflow.yml ps
+```
+
+Open `http://localhost:8080` with user `admin` and the configured password. Check the Airflow health
+endpoint at `http://localhost:8080/health` and confirm `training_dag`, `ingest_dag`, and
+`monitoring_dag` appear before unpausing schedules. Do not trigger `training_dag` until its data-check,
+Gate 1, and Gate 2 command interfaces have been integrated and verified on this branch. Airflow DAG
+visibility alone does not verify that training or promotion can run.

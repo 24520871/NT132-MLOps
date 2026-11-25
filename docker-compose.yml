@@ -8,6 +8,7 @@ x-app: &app
   environment:
     MLFLOW_TRACKING_URI: http://mlflow:5000
     MLFLOW_ARTIFACT_ROOT: /mlartifacts
+    ADMIN_TOKEN: ${ADMIN_TOKEN:-}
   volumes:
     - mlartifacts:/mlartifacts
 
