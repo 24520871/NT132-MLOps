@@ -8,6 +8,7 @@ x-app: &app
   environment:
     MLFLOW_TRACKING_URI: http://mlflow:5000
     MLFLOW_ARTIFACT_ROOT: /mlartifacts
+    ADMIN_TOKEN: ${ADMIN_TOKEN:-}
   volumes:
     - mlartifacts:/mlartifacts
 
@@ -50,7 +51,11 @@ services:
   trainer:
     <<: *app
     profiles: ["train"]
-    command: sh -c "python -m usecases.churn.train && python -m mlops.registry.promote churn"
+    command: >-
+      sh -c "python -m usecases.churn.train &&
+      python -m mlops.registry.promote churn --stage gate1 &&
+      python -m mlops.registry.promote churn --stage gate2 &&
+      python -m mlops.registry.promote churn --stage promote"
     volumes:
       - mlartifacts:/mlartifacts
       - ./data:/app/data:ro

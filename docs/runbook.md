@@ -156,3 +156,86 @@ p95-latency and predicted-churn panels under sustained traffic. "Data drift: no 
 - `NoCredentialsError` / 403 on S3: hop limit not raised (F1), role missing S3 permissions, or wrong `S3_BUCKET`.
 - API returns 503 on `/ready`: no model has the `production` alias yet (run F5), or the model was logged before the artifact root pointed at S3.
 - `ports: !override` needs Docker Compose >= 2.24 (`docker compose version`).
+
+## Data validation before training
+
+The churn data check is the input gate that runs before any model training. It reads the configured CSV
+(`data/raw/WA_Fn-UseC_-Telco-Customer-Churn.csv` by default; `DATA_PATH` can override it), verifies the
+original CSV header, then uses the existing churn cleaner and schema. The expected raw file has the
+`customerID`, 19 churn feature columns, and `Churn` target. At least 100 rows are required by the
+existing schema. Feature nulls, invalid categories, numeric types/ranges, malformed nonblank
+`TotalCharges`, invalid target labels, and a target missing either class are rejected. Blank
+`TotalCharges` values retain the existing cleaning behavior and become `0.0`.
+
+Run from the repository root:
+
+```powershell
+.venv\Scripts\python.exe -m mlops.data.check churn
+```
+
+The command prints a JSON result with `passed`, dataset filename, row/column counts, checks, and
+failures. It exits `0` when the dataset passes and nonzero when it fails; it never substitutes
+synthetic data. In Airflow, `training_dag.validate_data` invokes the same module through
+`$MLOPS_PYTHON -m mlops.data.check {{ params.usecase }}`. The `train_evaluate` task depends on successful
+completion of this validation task, so a failed check blocks training and all later tasks.
+
+This pre-training data validation is separate from **model Gate 1**, which evaluates trained model
+metrics after training. The model promotion CLI now has three explicit stages:
+
+```powershell
+.venv\Scripts\python.exe -m mlops.registry.promote churn --stage gate1
+.venv\Scripts\python.exe -m mlops.registry.promote churn --stage gate2
+.venv\Scripts\python.exe -m mlops.registry.promote churn --stage promote
+```
+
+Gate 1 reads the configured AUC/recall thresholds and places an accepted candidate under `staging`;
+it does not change `production`. Gate 2 requires an existing `production` alias, then checks the
+staging and production model signatures against the churn feature schema, loads both models, and
+requires finite, valid class probabilities on the same held-out feature rows. Prediction comparison
+and measured latency are recorded as informational observations only; they do not decide the result.
+Missing baseline, incompatible signatures, load/prediction errors, or invalid prediction outputs
+prevent promotion. The final `promote` stage rechecks accepted Gate 1/Gate 2 tags and that Gate 2's
+production baseline is still current before updating `previous_production` and `production` aliases.
+Rejected gates leave the production alias unchanged. CLI exit codes are 0 for accepted, 1 for a
+gate rejection, and 2 for missing registry state or an operational/configuration error.
+
+Gate 2 deliberately requires a production baseline, so a registry with no production model cannot
+bootstrap its first production version through this flow yet. Provisioning that initial baseline
+needs a separately agreed procedure. The Airflow training DAG orders data validation, training,
+Gate 1, Gate 2, guarded promotion, and API reload; a rejected gate skips downstream tasks. DAG import
+and task behavior should be verified separately from a live training/retraining run.
+
+Troubleshooting: a missing file reports the configured dataset name and asks you to place the CSV under
+`data/raw/` or set `DATA_PATH`. Schema failures identify the missing or invalid fields in the JSON
+`failures` list. For an Airflow validation failure, inspect the `validate_data` task log before retrying.
+
+## Local Airflow (Stage G infrastructure)
+
+Airflow 2.10.5 runs as an optional overlay. It uses a dedicated metadata PostgreSQL database and a
+separate `/opt/airflow/mlops-venv` for project commands. The Airflow services join the same Compose
+network as the API, MLflow, and Prometheus when all three files below are used together. The DAGs are
+mounted read-only; dataset and MLflow artifact paths are shared with the stack.
+
+Copy `.env.example` to `.env` if needed, then set unique local values for `AIRFLOW_DB_PASSWORD`,
+`AIRFLOW_ADMIN_PASSWORD`, and `AIRFLOW_SECRET_KEY`. This does not require replacing an existing `.env`.
+For Linux hosts, set `AIRFLOW_UID` to the host UID that owns the shared artifact volume.
+`ADMIN_TOKEN` is optional for local use; set a nonempty value in production and use the same value for
+the API and Airflow services.
+The `reload_api` task sends it as `X-Admin-Token` to `POST /admin/reload`. The endpoint forces the API
+router to re-check the MLflow `production` alias immediately; normal API requests also poll the alias
+every 30 seconds by default (`MODEL_POLL_SECONDS` can change that interval).
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.airflow.yml config
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.airflow.yml config --services
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.airflow.yml build airflow-webserver airflow-scheduler
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.airflow.yml up -d airflow-db airflow-init airflow-webserver airflow-scheduler
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.airflow.yml ps
+```
+
+Open `http://localhost:8080` with user `admin` and the configured password. Check the Airflow health
+endpoint at `http://localhost:8080/health` and confirm `training_dag`, `ingest_dag`, and
+`monitoring_dag` appear before unpausing schedules. The pre-training data-check command is implemented
+and can be verified independently as above. The post-training Gate 1/Gate 2/promotion interfaces are
+implemented, but DAG visibility and unit tests do not prove that the complete training/retraining
+pipeline, real MLflow artifact loading, or API reload has been verified end to end.

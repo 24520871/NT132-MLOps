@@ -7,14 +7,16 @@ setup:
 	$(PY) -m pip install -r requirements.txt
 	$(PY) -m pip install -e .
 
-# One command for a fresh clone: train, then gate + promote so the API has a `production` model
+# Train and run staged gates; Gate 2 requires an existing production baseline.
 bootstrap: train promote
 
 train:
 	$(PY) -m usecases.churn.train
 
 promote:
-	$(PY) -m mlops.registry.promote churn
+	$(PY) -m mlops.registry.promote churn --stage gate1
+	$(PY) -m mlops.registry.promote churn --stage gate2
+	$(PY) -m mlops.registry.promote churn --stage promote
 
 serve:
 	$(PY) -m uvicorn mlops.serving.app:app --port 8000
