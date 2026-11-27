@@ -219,6 +219,11 @@ mounted read-only; dataset and MLflow artifact paths are shared with the stack.
 Copy `.env.example` to `.env` if needed, then set unique local values for `AIRFLOW_DB_PASSWORD`,
 `AIRFLOW_ADMIN_PASSWORD`, and `AIRFLOW_SECRET_KEY`. This does not require replacing an existing `.env`.
 For Linux hosts, set `AIRFLOW_UID` to the host UID that owns the shared artifact volume.
+`ADMIN_TOKEN` is optional for local use; set a nonempty value in production and use the same value for
+the API and Airflow services.
+The `reload_api` task sends it as `X-Admin-Token` to `POST /admin/reload`. The endpoint forces the API
+router to re-check the MLflow `production` alias immediately; normal API requests also poll the alias
+every 30 seconds by default (`MODEL_POLL_SECONDS` can change that interval).
 
 ```powershell
 docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.airflow.yml config

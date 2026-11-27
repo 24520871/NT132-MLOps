@@ -1,6 +1,8 @@
 """Model router: serves whichever registry version currently has the `production` alias."""
 import logging
+import os
 import threading
+import time
 from typing import Any
 
 import mlflow
@@ -12,21 +14,36 @@ from mlops.config import tracking_uri
 
 log = logging.getLogger(__name__)
 
+DEFAULT_POLL_SECONDS = 30.0
+
 
 class ModelUnavailable(RuntimeError):
     """No usable production model; the message tells the operator what to do."""
 
 
 class ModelRouter:
-    def __init__(self, model_name: str, alias: str = "production"):
+    def __init__(self, model_name: str, alias: str = "production", poll_seconds: float | None = None):
+        """`poll_seconds`: how long a looked-up alias is trusted before asking MLflow again
+        (env MODEL_POLL_SECONDS, default 30; 0 = check on every call). `reload()` forces a check."""
         self.model_name = model_name
         self.alias = alias
+        self.poll_seconds = (
+            float(os.getenv("MODEL_POLL_SECONDS", DEFAULT_POLL_SECONDS)) if poll_seconds is None else poll_seconds
+        )
         self._model: Any = None
         self._version: str | None = None
+        self._checked_at = 0.0
         self._lock = threading.Lock()
 
-    def get(self) -> tuple[Any, str]:
-        """Return (model, version). Reloads automatically when the alias moves to a new version."""
+    def reload(self) -> tuple[Any, str]:
+        """Re-check the alias right now (used by POST /admin/reload after a promote or rollback)."""
+        return self.get(force=True)
+
+    def get(self, force: bool = False) -> tuple[Any, str]:
+        """Return (model, version). Reloads when the alias has moved to a new version."""
+        with self._lock:
+            if not force and self._model is not None and time.monotonic() - self._checked_at < self.poll_seconds:
+                return self._model, self._version
         uri = tracking_uri()
         mlflow.set_tracking_uri(uri)
         try:
@@ -48,4 +65,5 @@ class ModelRouter:
                     ) from exc
                 self._version = version
                 log.info("Loaded %s v%s (%s)", self.model_name, version, self.alias)
+            self._checked_at = time.monotonic()
             return self._model, self._version

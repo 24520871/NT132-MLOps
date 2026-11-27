@@ -1,9 +1,11 @@
 """FastAPI service. Run:  uvicorn mlops.serving.app:app --port 8000   (docs at /docs)"""
+import hmac
 import logging
+import os
 import time
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, Header, HTTPException, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST
 
 from mlops.config import load_config
@@ -58,6 +60,18 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         metrics.set_model(router.model_name, version)
         return {"status": "ready", "model_name": router.model_name, "model_version": version}
+
+    @app.post("/admin/reload", summary="Re-check the production alias now (called after promote/rollback)")
+    def admin_reload(x_admin_token: str | None = Header(default=None)) -> dict:
+        expected = os.getenv("ADMIN_TOKEN")  # unset/empty = open (local use); set it when the port is reachable
+        if expected and not hmac.compare_digest((x_admin_token or "").encode(), expected.encode()):
+            raise HTTPException(status_code=401, detail="Missing or wrong X-Admin-Token.")
+        try:
+            _, version = router.reload()
+        except ModelUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        metrics.set_model(router.model_name, version)
+        return {"status": "reloaded", "model_name": router.model_name, "model_version": version}
 
     @app.post("/predict/churn", response_model=PredictionResponse, summary="Predict churn")
     def predict_churn(req: ChurnRequest) -> PredictionResponse:

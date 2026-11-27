@@ -85,6 +85,23 @@ def test_predict_503_without_production_model(empty_client):
     assert "promote" in r.json()["detail"]
 
 
+def test_admin_reload_503_without_production_model(empty_client, monkeypatch):
+    monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+    response = empty_client.post("/admin/reload")
+    assert response.status_code == 503
+
+
+def test_admin_reload_requires_token_when_configured(served, monkeypatch):
+    client, _ = served
+    monkeypatch.setenv("ADMIN_TOKEN", "reload-secret")
+
+    assert client.post("/admin/reload").status_code == 401
+    assert client.post("/admin/reload", headers={"X-Admin-Token": "wrong"}).status_code == 401
+    response = client.post("/admin/reload", headers={"X-Admin-Token": "reload-secret"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "reloaded"
+
+
 def test_ready_200_with_model(served):
     client, _ = served
     r = client.get("/ready")
@@ -140,8 +157,24 @@ def test_docs_available(served):
     assert "/predict/churn" in client.get("/openapi.json").json()["paths"]
 
 
-def test_new_production_version_is_picked_up_without_restart(served):
+def test_admin_reload_picks_up_new_production_version(served):
     client, cfg = served
     _train_and_promote(cfg, seed=3)  # promotes v2
+    response = client.post("/admin/reload")
+    assert response.status_code == 200 and response.json()["model_version"] == "2"
     assert client.post("/predict/churn", json=SAMPLE).json()["model_version"] == "2"
     assert client.get("/ready").json()["model_version"] == "2"
+
+
+def test_router_polls_alias_and_caches_between_polls(mlflow_store, churn_cfg):
+    name = churn_cfg["model_name"]
+    _train_and_promote(churn_cfg)
+    polling = ModelRouter(name, poll_seconds=0)
+    cached = ModelRouter(name, poll_seconds=3600)
+    assert polling.get()[1] == "1" and cached.get()[1] == "1"
+
+    _train_and_promote(churn_cfg, seed=5)
+
+    assert polling.get()[1] == "2"
+    assert cached.get()[1] == "1"
+    assert cached.reload()[1] == "2"
